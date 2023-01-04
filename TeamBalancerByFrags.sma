@@ -213,7 +213,7 @@ public Task_CheckTeams( )
         {
             if( get_pcvar_num( g_nScreenFade ) )
             {
-                PerformPlayerScreenFade( nPlayer, CS_TEAM_CT );
+                PerformPlayerScreenFade( nPlayer, CS_TEAM_T );
             }
         }
 

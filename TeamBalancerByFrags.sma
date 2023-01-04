@@ -109,7 +109,7 @@ public plugin_cfg( )
 
 public Task_CheckTeams( )
 {
-    static szFlag[ 2 ], nPlayers_TE[ MAX_PLAYERS - 1 ], nPlayers_CT[ MAX_PLAYERS - 1 ], nNum_TE, nNum_CT, nPlayer;
+    static szFlag[ 2 ], nPlayers_TE[ 32 ], nPlayers_CT[ 32 ], nNum_TE, nNum_CT, nPlayer;
 
     get_players( nPlayers_TE, nNum_TE, "e", "TERRORIST" );
 
@@ -227,7 +227,7 @@ public Task_CheckTeams( )
 //
 FindPlayerByFrags( bool: bByLowFrags, CsTeams: nTeam )
 {
-    static nWho, nPlayers[ MAX_PLAYERS - 1 ], nNum, nPlayer, n, nMinMaxFrags, nFrags;
+    static nWho, nPlayers[ 32 ], nNum, nPlayer, n, nMinMaxFrags, nFrags;
 
     get_players( nPlayers, nNum, g_bCsdmActive ? "e" : "be", nTeam == CS_TEAM_T ? "TERRORIST" : "CT" );
 

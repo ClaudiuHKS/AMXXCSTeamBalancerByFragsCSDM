@@ -77,7 +77,7 @@ new g_nFlagNum;
 
 public plugin_init( )
 {
-    register_plugin( "Team Balancer by Frags", "5.0", "Hattrick (claudiuhks)" );
+    register_plugin( "Team Balancer by Frags", "5.1", "Hattrick (claudiuhks)" );
 
     g_nFrequency = register_cvar( "team_balancer_frequency", "10" );
     g_nDifference_TE = register_cvar( "team_balancer_te_difference", "1" );

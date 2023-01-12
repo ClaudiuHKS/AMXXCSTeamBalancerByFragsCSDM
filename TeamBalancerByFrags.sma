@@ -30,6 +30,11 @@ new g_nDifference_CT;
 //
 new g_nSetting;
 
+// Console variable to set whether this plugin auto decides if the player picked up for transfer has the lowest or the highest score (frags)
+// from his team depending on the enemy team overall scoring
+//
+new g_nAuto;
+
 // Console variable to announce the player when transferred
 //
 new g_nAnnounce;
@@ -78,6 +83,7 @@ public plugin_init( )
     g_nDifference_TE = register_cvar( "team_balancer_te_difference", "1" );
     g_nDifference_CT = register_cvar( "team_balancer_ct_difference", "1" );
     g_nSetting = register_cvar( "team_balancer_by_low_frags", "1" );
+    g_nAuto = register_cvar( "team_balancer_auto", "0" );
     g_nAnnounce = register_cvar( "team_balancer_announce", "0" );
     g_nAnnounceType = register_cvar( "team_balancer_announce_type", "0" );
     g_nFlag = register_cvar( "team_balancer_admin_flag", "" );
@@ -150,7 +156,15 @@ public Task_CheckTeams( )
     {
         // Get a terrorist
         //
-        nPlayer = FindPlayerByFrags( bool: get_pcvar_num( g_nSetting ), CsTeams: CS_TEAM_T );
+        if( !get_pcvar_num( g_nAuto ) )
+        {
+            nPlayer = FindPlayerByFrags( bool: get_pcvar_num( g_nSetting ), CS_TEAM_T );
+        }
+
+        else
+        {
+            nPlayer = FindPlayerByFrags( CheckTeamScoring( CS_TEAM_CT ) > CheckTeamScoring( CS_TEAM_T ), CS_TEAM_T );
+        }
 
         // Is this specified target a valid one?
         //
@@ -161,7 +175,7 @@ public Task_CheckTeams( )
 
         // Transfer him to the opposite team
         //
-        cs_set_user_team( nPlayer, CsTeams: CS_TEAM_CT );
+        cs_set_user_team( nPlayer, CS_TEAM_CT );
 
         // Announce
         //
@@ -189,7 +203,15 @@ public Task_CheckTeams( )
     {
         // Get a counter-terrorist
         //
-        nPlayer = FindPlayerByFrags( bool: get_pcvar_num( g_nSetting ), CsTeams: CS_TEAM_CT );
+        if( !get_pcvar_num( g_nAuto ) )
+        {
+            nPlayer = FindPlayerByFrags( bool: get_pcvar_num( g_nSetting ), CS_TEAM_CT );
+        }
+
+        else
+        {
+            nPlayer = FindPlayerByFrags( CheckTeamScoring( CS_TEAM_T ) > CheckTeamScoring( CS_TEAM_CT ), CS_TEAM_CT );
+        }
 
         // Is this specified target a valid one?
         //
@@ -200,7 +222,7 @@ public Task_CheckTeams( )
 
         // Transfer him to the opposite team
         //
-        cs_set_user_team( nPlayer, CsTeams: CS_TEAM_T );
+        cs_set_user_team( nPlayer, CS_TEAM_T );
 
         // Announce
         //
@@ -277,6 +299,30 @@ FindPlayerByFrags( bool: bByLowFrags, CsTeams: nTeam )
     }
 
     return nWho;
+}
+
+// The total frags of a team
+//
+CheckTeamScoring( CsTeams: nTeam )
+{
+    static nPlayers[ 32 ], nNum, nPlayer, n, nFrags;
+
+    get_players( nPlayers, nNum, "e", nTeam == CS_TEAM_T ? "TERRORIST" : "CT" );
+
+    if( nNum < 1 )
+    {
+        return 0;
+    }
+
+    for( n = 0, nFrags = 0; n < nNum; n++ )
+    {
+        nPlayer = nPlayers[ n ];
+        {
+            nFrags += get_user_frags( nPlayer );
+        }
+    }
+
+    return nFrags;
 }
 
 PerformPlayerScreenFade( nPlayer, CsTeams: nTeam )

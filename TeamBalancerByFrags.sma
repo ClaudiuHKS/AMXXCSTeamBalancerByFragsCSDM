@@ -209,6 +209,8 @@ public plugin_cfg( )
     }
 }
 
+// Check the teams
+//
 public Task_CheckTeams( )
 {
     static szName[ 32 ], szFlag[ 2 ], nPlayers_TE[ 32 ], nPlayers_CT[ 32 ], nNum_TE, nNum_CT, nPlayer, nAudioType, nAnnounceType, nAnnounceAllType;
@@ -451,7 +453,7 @@ public Task_CheckTeams( )
 //
 FindPlayerByFrags( bool: bByLowFrags, CsTeams: nTeam )
 {
-    static nWho, nPlayers[ 32 ], nNum, nPlayer, n, nMinMaxFrags, nFrags;
+    static nWho, nPlayers[ 32 ], nNum, nPlayer, nIter, nMinMaxFrags, nFrags;
 
     get_players( nPlayers, nNum, g_bCsdmActive ? "e" : "be", nTeam == CS_TEAM_T ? "TERRORIST" : "CT" );
 
@@ -463,9 +465,9 @@ FindPlayerByFrags( bool: bByLowFrags, CsTeams: nTeam )
     //
     nWho = g_nInvalidPlayer;
 
-    for( n = 0; n < nNum; n++ )
+    for( nIter = 0; nIter < nNum; nIter++ )
     {
-        nPlayer = nPlayers[ n ];
+        nPlayer = nPlayers[ nIter ];
 
         if( g_nFlagNum > 0 )
         {
@@ -507,7 +509,7 @@ FindPlayerByFrags( bool: bByLowFrags, CsTeams: nTeam )
 //
 CheckTeamScoring( CsTeams: nTeam )
 {
-    static nPlayers[ 32 ], nNum, nPlayer, n, nFrags;
+    static nPlayers[ 32 ], nNum, nPlayer, nIter, nFrags;
 
     get_players( nPlayers, nNum, "e", nTeam == CS_TEAM_T ? "TERRORIST" : "CT" );
 
@@ -516,9 +518,9 @@ CheckTeamScoring( CsTeams: nTeam )
         return 0;
     }
 
-    for( n = 0, nFrags = 0; n < nNum; n++ )
+    for( nIter = 0, nFrags = 0; nIter < nNum; nIter++ )
     {
-        nPlayer = nPlayers[ n ];
+        nPlayer = nPlayers[ nIter ];
         {
             nFrags += get_user_frags( nPlayer );
         }
@@ -527,6 +529,8 @@ CheckTeamScoring( CsTeams: nTeam )
     return nFrags;
 }
 
+// Send screen fade
+//
 PerformPlayerScreenFade( nPlayer, CsTeams: nTeam )
 {
     message_begin( MSG_ONE_UNRELIABLE, g_nScreenFadeMsg, .player = nPlayer );
@@ -573,18 +577,45 @@ PerformPlayerScreenFade( nPlayer, CsTeams: nTeam )
 //
 sendSayText( nPlayer, nIndex, const szIn[ ], any: ... )
 {
-    static szMsg[ 256 ];
+    static szMsg[ 256 ], nPlayers[ 32 ], nNum, nIter;
     {
         vformat( szMsg, charsmax( szMsg ), szIn, 4 );
         {
-            message_begin( MSG_ONE_UNRELIABLE, g_nSayTextMsg, .player = nPlayer );
+            if( nPlayer > 0 )
             {
-                write_byte( nIndex );
+                message_begin( MSG_ONE_UNRELIABLE, g_nSayTextMsg, .player = nPlayer );
                 {
-                    write_string( szMsg );
+                    write_byte( nIndex );
+                    {
+                        write_string( szMsg );
+                    }
+                }
+                message_end( );
+            }
+
+            else
+            {
+                get_players( nPlayers, nNum, "ch", "" );
+                {
+                    if( nNum > 0 )
+                    {
+                        for( nIter = 0; nIter < nNum; nIter++ )
+                        {
+                            nPlayer = nPlayers[ nIter ];
+                            {
+                                message_begin( MSG_ONE_UNRELIABLE, g_nSayTextMsg, .player = nPlayer );
+                                {
+                                    write_byte( nIndex );
+                                    {
+                                        write_string( szMsg );
+                                    }
+                                }
+                                message_end( );
+                            }
+                        }
+                    }
                 }
             }
-            message_end( );
         }
     }
 }

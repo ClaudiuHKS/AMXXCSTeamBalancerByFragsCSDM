@@ -115,6 +115,10 @@ new g_nScreenFadeRGBA_CT[ 4 ];
 //
 new g_nScreenFadeMsg;
 
+// The `SayText` game message index
+//
+new g_nSayTextMsg;
+
 // Console variable to set the immune admin flag
 //
 new g_nFlag;
@@ -197,6 +201,7 @@ public plugin_precache( )
 public plugin_cfg( )
 {
     g_nScreenFadeMsg = get_user_msgid( "ScreenFade" );
+    g_nSayTextMsg = get_user_msgid( "SayText" );
 
     if( g_nVersion )
     {
@@ -277,14 +282,14 @@ public Task_CheckTeams( )
                 client_print( nPlayer, print_center, "You've joined the Counter-Terrorists" );
             }
 
-            else if( nAnnounceType == 1 )
+            else if( nAnnounceType == 1 || g_nSayTextMsg < 1 )
             {
                 client_print( nPlayer, print_chat, "* %s You've joined the Counter-Terrorists", g_szPluginTalkTag );
             }
 
             else
             {
-                client_print_color( nPlayer, print_team_blue, "\x01*\x04 %s\x01 You've joined the\x03 Counter-Terrorists", g_szPluginTalkTag );
+                sendSayText( nPlayer, 35 /** \x03 is blue */, "\x01*\x04 %s\x01 You've joined the\x03 Counter-Terrorists", g_szPluginTalkTag );
             }
         }
 
@@ -294,14 +299,14 @@ public Task_CheckTeams( )
         {
             get_user_name( nPlayer, szName, charsmax( szName ) );
             {
-                if( nAnnounceAllType == 1 )
+                if( nAnnounceAllType == 1 || g_nSayTextMsg < 1 )
                 {
                     client_print( 0, print_chat, "* %s %s joined the Counter-Terrorists", g_szPluginTalkTag, szName );
                 }
 
                 else
                 {
-                    client_print_color( 0, print_team_blue, "\x01*\x04 %s\x03 %s\x01 joined the\x03 Counter-Terrorists", g_szPluginTalkTag, szName );
+                    sendSayText( 0, 35 /** \x03 is blue */, "\x01*\x04 %s\x03 %s\x01 joined the\x03 Counter-Terrorists", g_szPluginTalkTag, szName );
                 }
             }
         }
@@ -377,14 +382,14 @@ public Task_CheckTeams( )
                 client_print( nPlayer, print_center, "You've joined the Terrorists" );
             }
 
-            else if( nAnnounceType == 1 )
+            else if( nAnnounceType == 1 || g_nSayTextMsg < 1 )
             {
                 client_print( nPlayer, print_chat, "* %s You've joined the Terrorists", g_szPluginTalkTag );
             }
 
             else
             {
-                client_print_color( nPlayer, print_team_red, "\x01*\x04 %s\x01 You've joined the\x03 Terrorists", g_szPluginTalkTag );
+                sendSayText( nPlayer, 34 /** \x03 is red */, "\x01*\x04 %s\x01 You've joined the\x03 Terrorists", g_szPluginTalkTag );
             }
         }
 
@@ -394,14 +399,14 @@ public Task_CheckTeams( )
         {
             get_user_name( nPlayer, szName, charsmax( szName ) );
             {
-                if( nAnnounceAllType == 1 )
+                if( nAnnounceAllType == 1 || g_nSayTextMsg < 1 )
                 {
                     client_print( 0, print_chat, "* %s %s joined the Terrorists", g_szPluginTalkTag, szName );
                 }
 
                 else
                 {
-                    client_print_color( 0, print_team_red, "\x01*\x04 %s\x03 %s\x01 joined the\x03 Terrorists", g_szPluginTalkTag, szName );
+                    sendSayText( 0, 34 /** \x03 is red */, "\x01*\x04 %s\x03 %s\x01 joined the\x03 Terrorists", g_szPluginTalkTag, szName );
                 }
             }
         }
@@ -536,7 +541,9 @@ PerformPlayerScreenFade( nPlayer, CsTeams: nTeam )
                     write_byte( clamp( get_pcvar_num( g_nScreenFadeRGBA_TE[ 0 ] ), 0, 255 ) ); /// Red
                     write_byte( clamp( get_pcvar_num( g_nScreenFadeRGBA_TE[ 1 ] ), 0, 255 ) ); /// Green
                     write_byte( clamp( get_pcvar_num( g_nScreenFadeRGBA_TE[ 2 ] ), 0, 255 ) ); /// Blue
-                    write_byte( clamp( get_pcvar_num( g_nScreenFadeRGBA_TE[ 3 ] ), 0, 255 ) ); /// Alpha
+                    {
+                        write_byte( clamp( get_pcvar_num( g_nScreenFadeRGBA_TE[ 3 ] ), 0, 255 ) ); /// Alpha
+                    }
                 }
 
                 else
@@ -544,10 +551,40 @@ PerformPlayerScreenFade( nPlayer, CsTeams: nTeam )
                     write_byte( clamp( get_pcvar_num( g_nScreenFadeRGBA_CT[ 0 ] ), 0, 255 ) ); /// Red
                     write_byte( clamp( get_pcvar_num( g_nScreenFadeRGBA_CT[ 1 ] ), 0, 255 ) ); /// Green
                     write_byte( clamp( get_pcvar_num( g_nScreenFadeRGBA_CT[ 2 ] ), 0, 255 ) ); /// Blue
-                    write_byte( clamp( get_pcvar_num( g_nScreenFadeRGBA_CT[ 3 ] ), 0, 255 ) ); /// Alpha
+                    {
+                        write_byte( clamp( get_pcvar_num( g_nScreenFadeRGBA_CT[ 3 ] ), 0, 255 ) ); /// Alpha
+                    }
                 }
             }
         }
     }
     message_end( );
+}
+
+// Colored print_chat (print_talk) message in CS & CZ
+//
+// nIndex
+//
+// 33 ('\x03' is grey)
+// 34 ('\x03' is red)
+// 35 ('\x03' is blue)
+//
+// 1 - 32 ('\x03' is their team color)
+//
+sendSayText( nPlayer, nIndex, const szIn[ ], any: ... )
+{
+    static szMsg[ 256 ];
+    {
+        vformat( szMsg, charsmax( szMsg ), szIn, 4 );
+        {
+            message_begin( MSG_ONE_UNRELIABLE, g_nSayTextMsg, .player = nPlayer );
+            {
+                write_byte( nIndex );
+                {
+                    write_string( szMsg );
+                }
+            }
+            message_end( );
+        }
+    }
 }

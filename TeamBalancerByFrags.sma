@@ -10,9 +10,9 @@
 //
 new const g_szPluginVersion[ ] = "6.0";
 
-// The left - right slashed game sound directory name
+// The game sound directory name
 //
-new const g_szSlashedSoundDirectoryName[ ] = "/sound/";
+new const g_szSoundDirectoryName[ ] = "sound";
 
 // The wave audio file path (optional to be uploaded to the game server & then downloaded by the players)
 //
@@ -174,23 +174,11 @@ public plugin_precache( )
 {
     new szBuffer[ 256 ];
     {
-        get_modname( szBuffer, charsmax( szBuffer ) );
+        formatex( szBuffer, charsmax( szBuffer ), "%s/%s", g_szSoundDirectoryName, g_szWaveAudioFilePath );
         {
-            add( szBuffer, charsmax( szBuffer ), g_szSlashedSoundDirectoryName );
+            if( file_exists( szBuffer ) )
             {
-                add( szBuffer, charsmax( szBuffer ), g_szWaveAudioFilePath );
-                {
-                    new nFile = fopen( szBuffer, "r" );
-                    {
-                        if( nFile )
-                        {
-                            fclose( nFile );
-                            {
-                                precache_sound( g_szWaveAudioFilePath );
-                            }
-                        }
-                    }
-                }
+                precache_sound( g_szWaveAudioFilePath );
             }
         }
     }

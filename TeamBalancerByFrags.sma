@@ -322,7 +322,15 @@ public Task_CheckTeams( )
 
             else if( nAudioType == 1 )
             {
-                emit_sound( nPlayer, CHAN_BODY, g_szWaveAudioFilePath, VOL_NORM, ATTN_NORM, 0, PITCH_NORM );
+                if( is_user_alive( nPlayer ) )
+                {
+                    emit_sound( nPlayer, CHAN_BODY, g_szWaveAudioFilePath, VOL_NORM, ATTN_NORM, 0, PITCH_NORM );
+                }
+
+                else
+                {
+                    client_cmd( nPlayer, "spk \"%s\"", g_szWaveAudioFilePath );
+                }
             }
 
             else
@@ -422,7 +430,15 @@ public Task_CheckTeams( )
 
             else if( nAudioType == 1 )
             {
-                emit_sound( nPlayer, CHAN_BODY, g_szWaveAudioFilePath, VOL_NORM, ATTN_NORM, 0, PITCH_NORM );
+                if( is_user_alive( nPlayer ) )
+                {
+                    emit_sound( nPlayer, CHAN_BODY, g_szWaveAudioFilePath, VOL_NORM, ATTN_NORM, 0, PITCH_NORM );
+                }
+
+                else
+                {
+                    client_cmd( nPlayer, "spk \"%s\"", g_szWaveAudioFilePath );
+                }
             }
 
             else

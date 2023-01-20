@@ -16,7 +16,7 @@ new const g_szSoundDirectoryName[ ] = "sound";
 
 // The wave audio file path (optional to be uploaded to the game server & then downloaded by the players)
 //
-new const g_szWaveAudioFilePath[ ] = "team_balancer_by_frags/teleport.wav";
+new const g_szWaveAudioFilePath[ ] = "team_balancer_by_frags/transfer.wav";
 
 // The plugin talk tag
 //
@@ -274,12 +274,12 @@ public Task_CheckTeams( )
 
             else if( nAnnounceType == 1 || g_nSayTextMsg < 1 )
             {
-                client_print( nPlayer, print_chat, "* %s You've joined the Counter-Terrorists", g_szPluginTalkTag );
+                client_print( nPlayer, print_chat, "%s You've joined the Counter-Terrorists", g_szPluginTalkTag );
             }
 
             else
             {
-                sendSayText( nPlayer, 35 /** \x03 is blue */, "\x01*\x04 %s\x01 You've joined the\x03 Counter-Terrorists", g_szPluginTalkTag );
+                sendSayText( nPlayer, 35 /** \x03 is blue */, "\x04%s\x01 You've joined the\x03 Counter-Terrorists", g_szPluginTalkTag );
             }
         }
 
@@ -291,12 +291,12 @@ public Task_CheckTeams( )
             {
                 if( nAnnounceAllType == 1 || g_nSayTextMsg < 1 )
                 {
-                    client_print( 0, print_chat, "* %s %s joined the Counter-Terrorists", g_szPluginTalkTag, szName );
+                    client_print( 0, print_chat, "%s %s joined the Counter-Terrorists", g_szPluginTalkTag, szName );
                 }
 
                 else
                 {
-                    sendSayText( 0, 35 /** \x03 is blue */, "\x01*\x04 %s\x03 %s\x01 joined the\x03 Counter-Terrorists", g_szPluginTalkTag, szName );
+                    sendSayText( 0, 35 /** \x03 is blue */, "\x04%s\x03 %s\x01 joined the\x03 Counter-Terrorists", g_szPluginTalkTag, szName );
                 }
             }
         }
@@ -374,12 +374,12 @@ public Task_CheckTeams( )
 
             else if( nAnnounceType == 1 || g_nSayTextMsg < 1 )
             {
-                client_print( nPlayer, print_chat, "* %s You've joined the Terrorists", g_szPluginTalkTag );
+                client_print( nPlayer, print_chat, "%s You've joined the Terrorists", g_szPluginTalkTag );
             }
 
             else
             {
-                sendSayText( nPlayer, 34 /** \x03 is red */, "\x01*\x04 %s\x01 You've joined the\x03 Terrorists", g_szPluginTalkTag );
+                sendSayText( nPlayer, 34 /** \x03 is red */, "\x04%s\x01 You've joined the\x03 Terrorists", g_szPluginTalkTag );
             }
         }
 
@@ -391,12 +391,12 @@ public Task_CheckTeams( )
             {
                 if( nAnnounceAllType == 1 || g_nSayTextMsg < 1 )
                 {
-                    client_print( 0, print_chat, "* %s %s joined the Terrorists", g_szPluginTalkTag, szName );
+                    client_print( 0, print_chat, "%s %s joined the Terrorists", g_szPluginTalkTag, szName );
                 }
 
                 else
                 {
-                    sendSayText( 0, 34 /** \x03 is red */, "\x01*\x04 %s\x03 %s\x01 joined the\x03 Terrorists", g_szPluginTalkTag, szName );
+                    sendSayText( 0, 34 /** \x03 is red */, "\x04%s\x03 %s\x01 joined the\x03 Terrorists", g_szPluginTalkTag, szName );
                 }
             }
         }

@@ -23,7 +23,7 @@ team_balancer_sf_hold_time 0.0 // Screen fade hold time seconds, if screen fade 
 
 team_balancer_audio 1 // Audio alert to the transferred player
 
-team_balancer_audio_type 0 // Audio alert type (0 = speak to transferred player ears a teleport like sound, 1 = that player emits that sound globally so players around him can still hear the sound at a lower volume depending on the distance between them [if the transferred player is dead 0 will be used instead] & 2 = like 0 but speak "YOUR NOW [ T / C T ] FORCE")
+team_balancer_audio_type 0 // Audio alert type (0 = speak to transferred player ears a teleport like sound, 1 = that player emits that sound globally so players around them can still hear the sound at a lower volume depending on the distance between them [if the transferred player is dead 0 will be used instead] & 2 = like 0 but speak "YOUR NOW [ T / C T ] FORCE")
 
 team_balancer_sf_te_r 200 // Red T
 

@@ -9,6 +9,8 @@ team_balancer_ct_difference 1 // Maximum difference between counter-terrorists t
 
 team_balancer_admin_flag "a" // Admin flag to set admins immune. Examples: a, b, c, d
 
+team_balancer_bots 0 // Bots are taken as they were humans (1 = yes & 0 = no, so half bots T + half bots CT)
+
 team_balancer_announce 1 // Announce the player by message if they were transferred
 
 team_balancer_announce_type 0 // Announce type (0 = print_center, 1 = print_chat [print_talk] & 2 = print_chat [print_talk] colored)

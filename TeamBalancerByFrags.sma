@@ -71,6 +71,10 @@ new g_nAudio;
 //
 new g_nAudioType;
 
+// Cache for performance
+//
+new g_nAudioTypeNum;
+
 // Console variable to control whether or not to consider bots humans
 //
 // 1 consider bots humans
@@ -90,6 +94,10 @@ new bool: g_bBotsAreLikeHumans;
 //
 new g_nAnnounceAll;
 
+// Cache for performance
+//
+new g_nAnnounceAllTypeNum;
+
 // Console variable to announce the player on their screen when transferred
 //
 new g_nAnnounce;
@@ -101,6 +109,10 @@ new g_nAnnounce;
 // 2 print_chat (print_talk [screen left bottom]) colored
 //
 new g_nAnnounceType;
+
+// Cache for performance
+//
+new g_nAnnounceTypeNum;
 
 // Console variable to set a screen fade for the transferred player
 //
@@ -149,7 +161,7 @@ public plugin_init( )
         g_nVersion = register_cvar( "team_balancer_by_frags", g_szPluginVersion, FCVAR_SERVER | FCVAR_SPONLY );
     }
 
-    g_nFrequency = register_cvar( "team_balancer_frequency", "10" );
+    g_nFrequency = register_cvar( "team_balancer_frequency", "10.0" );
     g_nDifference_TE = register_cvar( "team_balancer_te_difference", "1" );
     g_nDifference_CT = register_cvar( "team_balancer_ct_difference", "1" );
     g_nSetting = register_cvar( "team_balancer_by_low_frags", "1" );
@@ -175,7 +187,7 @@ public plugin_init( )
     g_nScreenFadeRGBA_CT[ 2 ] = register_cvar( "team_balancer_sf_ct_b", "200" ); /// Blue
     g_nScreenFadeRGBA_CT[ 3 ] = register_cvar( "team_balancer_sf_ct_a", "240" ); /// Alpha
 
-    set_task( get_pcvar_float( g_nFrequency ), "Task_CheckTeams", .flags = "b" /** Repeat */ );
+    set_task( get_pcvar_float( g_nFrequency ), "Task_CheckTeams", 0, "", 0, "b", 0 ); // Repeat indefinitely
 
     g_nCsdmActive = get_cvar_pointer( "csdm_active" );
 }
@@ -213,10 +225,39 @@ public plugin_cfg( )
 //
 public Task_CheckTeams( )
 {
-    static szName[ 32 ], szFlag[ 2 ], nPlayers_TE[ 32 ], nPlayers_CT[ 32 ], nNum_TE, nNum_CT, nPlayer, nAudioType, nAnnounceType, nAnnounceAllType;
+    static szName[ 32 ], szFlag[ 2 ], nPlayers_TE[ 32 ], nPlayers_CT[ 32 ], nNum_TE, nNum_CT, nPlayer;
 
+    // Cache global data for performance
+    //
     g_bBotsAreLikeHumans = bool: get_pcvar_num( g_nBots );
+    {
+        g_nAnnounceTypeNum = get_pcvar_num( g_nAnnounceType );
+        {
+            g_nAudioTypeNum = get_pcvar_num( g_nAudioType );
+            {
+                g_nAnnounceAllTypeNum = get_pcvar_num( g_nAnnounceAll );
+                {
+                    get_pcvar_string( g_nFlag, szFlag, charsmax( szFlag ) );
+                    {
+                        g_nFlagNum = read_flags( szFlag );
+                    }
 
+                    if( g_nCsdmActive > 0 )
+                    {
+                        g_bCsdmActive = bool: get_pcvar_num( g_nCsdmActive );
+                    }
+
+                    else
+                    {
+                        g_bCsdmActive = false;
+                    }
+                }
+            }
+        }
+    }
+
+    // Read terrorist team size in players count excluding hltv proxies
+    //
     get_players( nPlayers_TE, nNum_TE, "eh", "TERRORIST" );
 
     // Check whether the teams should be balanced
@@ -226,6 +267,8 @@ public Task_CheckTeams( )
         goto BotsComputation;
     }
 
+    // Read counter terrorist team size in players count excluding hltv proxies
+    //
     get_players( nPlayers_CT, nNum_CT, "eh", "CT" );
 
     // Check whether the teams should be balanced
@@ -235,24 +278,9 @@ public Task_CheckTeams( )
         goto BotsComputation;
     }
 
-    get_pcvar_string( g_nFlag, szFlag, charsmax( szFlag ) );
-    {
-        g_nFlagNum = read_flags( szFlag );
-    }
-
-    if( g_nCsdmActive > 0 )
-    {
-        g_bCsdmActive = bool: get_pcvar_num( g_nCsdmActive );
-    }
-
-    else
-    {
-        g_bCsdmActive = false;
-    }
-
     // Is the difference between terrorists and counter terrorists higher than the specified value?
     //
-    if( nNum_TE - nNum_CT > max( 1, get_pcvar_num( g_nDifference_TE ) ) )
+    if( ( nNum_TE - nNum_CT ) > max( 1, get_pcvar_num( g_nDifference_TE ) ) )
     {
         // Get a terrorist
         //
@@ -281,12 +309,12 @@ public Task_CheckTeams( )
         //
         if( get_pcvar_num( g_nAnnounce ) )
         {
-            if( ( nAnnounceType = get_pcvar_num( g_nAnnounceType ) ) == 0 )
+            if( g_nAnnounceTypeNum == 0 )
             {
                 client_print( nPlayer, print_center, "You've joined the Counter-Terrorists" );
             }
 
-            else if( nAnnounceType == 1 || g_nSayTextMsg < 1 )
+            else if( g_nAnnounceTypeNum == 1 || g_nSayTextMsg < 1 )
             {
                 client_print( nPlayer, print_chat, "%s You've joined the Counter-Terrorists", g_szPluginTalkTag );
             }
@@ -299,11 +327,11 @@ public Task_CheckTeams( )
 
         // Announce all
         //
-        if( ( nAnnounceAllType = get_pcvar_num( g_nAnnounceAll ) ) )
+        if( g_nAnnounceAllTypeNum )
         {
             get_user_name( nPlayer, szName, charsmax( szName ) );
             {
-                if( nAnnounceAllType == 1 || g_nSayTextMsg < 1 )
+                if( g_nAnnounceAllTypeNum == 1 || g_nSayTextMsg < 1 )
                 {
                     client_print( 0, print_chat, "%s %s joined the Counter-Terrorists", g_szPluginTalkTag, szName );
                 }
@@ -329,12 +357,12 @@ public Task_CheckTeams( )
         //
         if( get_pcvar_num( g_nAudio ) )
         {
-            if( ( nAudioType = get_pcvar_num( g_nAudioType ) ) == 0 )
+            if( g_nAudioTypeNum == 0 )
             {
                 client_cmd( nPlayer, "spk \"%s\"", g_szWaveAudioFilePath );
             }
 
-            else if( nAudioType == 1 )
+            else if( g_nAudioTypeNum == 1 )
             {
                 if( is_user_alive( nPlayer ) )
                 {
@@ -360,9 +388,9 @@ public Task_CheckTeams( )
 
     // Is the difference between counter terrorists and terrorists higher than the specified value?
     //
-    else if( nNum_CT - nNum_TE > max( 1, get_pcvar_num( g_nDifference_CT ) ) )
+    else if( ( nNum_CT - nNum_TE ) > max( 1, get_pcvar_num( g_nDifference_CT ) ) )
     {
-        // Get a counter-terrorist
+        // Get a counter terrorist
         //
         if( !get_pcvar_num( g_nAuto ) )
         {
@@ -389,12 +417,12 @@ public Task_CheckTeams( )
         //
         if( get_pcvar_num( g_nAnnounce ) )
         {
-            if( ( nAnnounceType = get_pcvar_num( g_nAnnounceType ) ) == 0 )
+            if( g_nAnnounceTypeNum == 0 )
             {
                 client_print( nPlayer, print_center, "You've joined the Terrorists" );
             }
 
-            else if( nAnnounceType == 1 || g_nSayTextMsg < 1 )
+            else if( g_nAnnounceTypeNum == 1 || g_nSayTextMsg < 1 )
             {
                 client_print( nPlayer, print_chat, "%s You've joined the Terrorists", g_szPluginTalkTag );
             }
@@ -407,11 +435,11 @@ public Task_CheckTeams( )
 
         // Announce all
         //
-        if( ( nAnnounceAllType = get_pcvar_num( g_nAnnounceAll ) ) )
+        if( g_nAnnounceAllTypeNum )
         {
             get_user_name( nPlayer, szName, charsmax( szName ) );
             {
-                if( nAnnounceAllType == 1 || g_nSayTextMsg < 1 )
+                if( g_nAnnounceAllTypeNum == 1 || g_nSayTextMsg < 1 )
                 {
                     client_print( 0, print_chat, "%s %s joined the Terrorists", g_szPluginTalkTag, szName );
                 }
@@ -437,12 +465,12 @@ public Task_CheckTeams( )
         //
         if( get_pcvar_num( g_nAudio ) )
         {
-            if( ( nAudioType = get_pcvar_num( g_nAudioType ) ) == 0 )
+            if( g_nAudioTypeNum == 0 )
             {
                 client_cmd( nPlayer, "spk \"%s\"", g_szWaveAudioFilePath );
             }
 
-            else if( nAudioType == 1 )
+            else if( g_nAudioTypeNum == 1 )
             {
                 if( is_user_alive( nPlayer ) )
                 {
@@ -466,13 +494,15 @@ public Task_CheckTeams( )
         Task_CheckTeams( );
     }
 
+// Compute the bots in the end
+//
 BotsComputation:
 
     if( !g_bBotsAreLikeHumans )
     {
         while( ( BotsNum( CS_TEAM_T ) - BotsNum( CS_TEAM_CT ) ) > max( 1, get_pcvar_num( g_nDifference_TE ) ) )
         {
-            // Get a terrorist
+            // Get a terrorist bot
             //
             if( !get_pcvar_num( g_nAuto ) )
             {
@@ -497,11 +527,11 @@ BotsComputation:
 
             // Announce all
             //
-            if( ( nAnnounceAllType = get_pcvar_num( g_nAnnounceAll ) ) )
+            if( g_nAnnounceAllTypeNum )
             {
                 get_user_name( nPlayer, szName, charsmax( szName ) );
                 {
-                    if( nAnnounceAllType == 1 || g_nSayTextMsg < 1 )
+                    if( g_nAnnounceAllTypeNum == 1 || g_nSayTextMsg < 1 )
                     {
                         client_print( 0, print_chat, "%s %s joined the Counter-Terrorists", g_szPluginTalkTag, szName );
                     }
@@ -517,7 +547,7 @@ BotsComputation:
             //
             if( get_pcvar_num( g_nAudio ) )
             {
-                if( get_pcvar_num( g_nAudioType ) == 1 )
+                if( g_nAudioTypeNum == 1 )
                 {
                     if( is_user_alive( nPlayer ) )
                     {
@@ -529,7 +559,7 @@ BotsComputation:
 
         while( ( BotsNum( CS_TEAM_CT ) - BotsNum( CS_TEAM_T ) ) > max( 1, get_pcvar_num( g_nDifference_CT ) ) )
         {
-            // Get a counter-terrorist
+            // Get a counter terrorist bot
             //
             if( !get_pcvar_num( g_nAuto ) )
             {
@@ -554,11 +584,11 @@ BotsComputation:
 
             // Announce all
             //
-            if( ( nAnnounceAllType = get_pcvar_num( g_nAnnounceAll ) ) )
+            if( g_nAnnounceAllTypeNum )
             {
                 get_user_name( nPlayer, szName, charsmax( szName ) );
                 {
-                    if( nAnnounceAllType == 1 || g_nSayTextMsg < 1 )
+                    if( g_nAnnounceAllTypeNum == 1 || g_nSayTextMsg < 1 )
                     {
                         client_print( 0, print_chat, "%s %s joined the Terrorists", g_szPluginTalkTag, szName );
                     }
@@ -574,7 +604,7 @@ BotsComputation:
             //
             if( get_pcvar_num( g_nAudio ) )
             {
-                if( get_pcvar_num( g_nAudioType ) == 1 )
+                if( g_nAudioTypeNum == 1 )
                 {
                     if( is_user_alive( nPlayer ) )
                     {
@@ -606,12 +636,12 @@ FindPlayerByFrags( bool: bByLowFrags, CsTeams: nTeam )
 
     if( g_bBotsAreLikeHumans )
     {
-        get_players( nPlayers, nNum, g_bCsdmActive ? "eh" : "beh", nTeam == CS_TEAM_T ? "TERRORIST" : "CT" );
+        get_players( nPlayers, nNum, g_bCsdmActive ? "eh" : "beh", nTeam == CS_TEAM_T ? "TERRORIST" : "CT" ); // Filter out hltv proxies
     }
 
     else
     {
-        get_players( nPlayers, nNum, g_bCsdmActive ? "ceh" : "bceh", nTeam == CS_TEAM_T ? "TERRORIST" : "CT" );
+        get_players( nPlayers, nNum, g_bCsdmActive ? "ceh" : "bceh", nTeam == CS_TEAM_T ? "TERRORIST" : "CT" ); // Filter out bots & hltv proxies
     }
 
     // The lowest/ highest number
@@ -668,6 +698,8 @@ FindBotByFrags( bool: bByLowFrags, CsTeams: nTeam )
 {
     static nWho, nPlayers[ 32 ], nNum, nPlayer, nIter, nMinMaxFrags, nFrags;
 
+    // Exclude human players & hltv proxies
+    //
     get_players( nPlayers, nNum, g_bCsdmActive ? "deh" : "bdeh", nTeam == CS_TEAM_T ? "TERRORIST" : "CT" );
 
     // The lowest/ highest number
@@ -724,7 +756,7 @@ CheckTeamScoring( CsTeams: nTeam )
 {
     static nPlayers[ 32 ], nNum, nPlayer, nIter, nFrags;
 
-    get_players( nPlayers, nNum, "eh", nTeam == CS_TEAM_T ? "TERRORIST" : "CT" );
+    get_players( nPlayers, nNum, "eh", nTeam == CS_TEAM_T ? "TERRORIST" : "CT" ); // Exclude hltv proxies
 
     if( nNum < 1 )
     {
@@ -746,7 +778,7 @@ CheckTeamScoring( CsTeams: nTeam )
 //
 PerformPlayerScreenFade( nPlayer, CsTeams: nTeam )
 {
-    message_begin( MSG_ONE_UNRELIABLE, g_nScreenFadeMsg, .player = nPlayer );
+    message_begin( MSG_ONE_UNRELIABLE, g_nScreenFadeMsg, { 0, 0, 0 } /** Message origin */, nPlayer );
     {
         write_short( floatround( 4096.0 /** UNIT_SECOND = ( 1 << 12 ) */ * floatabs( get_pcvar_float( g_nScreenFadeDuration ) ), floatround_round ) ); /// Duration
         write_short( floatround( 4096.0 /** UNIT_SECOND = ( 1 << 12 ) */ * floatabs( get_pcvar_float( g_nScreenFadeHoldTime ) ), floatround_round ) ); /// Hold time
@@ -780,7 +812,9 @@ PerformPlayerScreenFade( nPlayer, CsTeams: nTeam )
 
 // Colored print_chat (print_talk) message in CS & CZ
 //
+// ------
 // nIndex
+// ------
 //
 // 33 ('\x03' is grey)
 // 34 ('\x03' is red)
@@ -796,7 +830,7 @@ sendSayText( nPlayer, nIndex, const szIn[ ], any: ... )
         {
             if( nPlayer > 0 )
             {
-                message_begin( MSG_ONE_UNRELIABLE, g_nSayTextMsg, .player = nPlayer );
+                message_begin( MSG_ONE_UNRELIABLE, g_nSayTextMsg, { 0, 0, 0 } /** Message origin */, nPlayer );
                 {
                     write_byte( nIndex );
                     {
@@ -808,7 +842,7 @@ sendSayText( nPlayer, nIndex, const szIn[ ], any: ... )
 
             else
             {
-                get_players( nPlayers, nNum, "ch", "" );
+                get_players( nPlayers, nNum, "ch", "" ); // No bots & hltv proxies
                 {
                     if( nNum > 0 )
                     {
@@ -816,7 +850,7 @@ sendSayText( nPlayer, nIndex, const szIn[ ], any: ... )
                         {
                             nPlayer = nPlayers[ nIter ];
                             {
-                                message_begin( MSG_ONE_UNRELIABLE, g_nSayTextMsg, .player = nPlayer );
+                                message_begin( MSG_ONE_UNRELIABLE, g_nSayTextMsg, { 0, 0, 0 } /** Message origin */, nPlayer );
                                 {
                                     write_byte( nIndex );
                                     {

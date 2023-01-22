@@ -1,7 +1,7 @@
 # AMXXCSTeamBalancerByFragsCSDM
 https://forums.alliedmods.net/showthread.php?t=161175
 
-team_balancer_frequency 10 // Team check frequency in seconds (float, for example can be 9.125)
+team_balancer_frequency 10.0 // Team check frequency in seconds (float, for example can be 9.125)
 
 team_balancer_te_difference 1 // Maximum difference between terrorists team and counter-terrorists
 

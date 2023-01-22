@@ -538,7 +538,7 @@ BotsComputation:
 
             else
             {
-                nPlayer = FindBotByFrags( CheckTeamScoring( CS_TEAM_CT ) > CheckTeamScoring( CS_TEAM_T ), CS_TEAM_CT );
+                nPlayer = FindBotByFrags( CheckTeamScoring( CS_TEAM_T ) > CheckTeamScoring( CS_TEAM_CT ), CS_TEAM_CT );
             }
 
             // Is this specified selected bot a valid one?

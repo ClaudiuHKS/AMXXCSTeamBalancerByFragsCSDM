@@ -71,6 +71,17 @@ new g_nAudio;
 //
 new g_nAudioType;
 
+// Console variable to control whether or not to consider bots humans
+//
+// 1 consider bots humans
+// 0 bots are balanced half T force & half CT force
+//
+new g_nBots;
+
+// For performance reasons cache the 'team_balancer_bots' value
+//
+new bool: g_bBotsAreLikeHumans;
+
 // Console variable to allow a global chat message announcing the transfer
 //
 // 0 off
@@ -143,6 +154,7 @@ public plugin_init( )
     g_nDifference_CT = register_cvar( "team_balancer_ct_difference", "1" );
     g_nSetting = register_cvar( "team_balancer_by_low_frags", "1" );
     g_nAuto = register_cvar( "team_balancer_auto", "1" );
+    g_nBots = register_cvar( "team_balancer_bots", "0" );
     g_nAnnounce = register_cvar( "team_balancer_announce", "1" );
     g_nAnnounceType = register_cvar( "team_balancer_announce_type", "0" );
     g_nAnnounceAll = register_cvar( "team_balancer_announce_all", "2" );
@@ -203,22 +215,24 @@ public Task_CheckTeams( )
 {
     static szName[ 32 ], szFlag[ 2 ], nPlayers_TE[ 32 ], nPlayers_CT[ 32 ], nNum_TE, nNum_CT, nPlayer, nAudioType, nAnnounceType, nAnnounceAllType;
 
-    get_players( nPlayers_TE, nNum_TE, "e", "TERRORIST" );
+    g_bBotsAreLikeHumans = bool: get_pcvar_num( g_nBots );
+
+    get_players( nPlayers_TE, nNum_TE, "eh", "TERRORIST" );
 
     // Check whether the teams should be balanced
     //
     if( nNum_TE < 1 )
     {
-        return;
+        goto BotsComputation;
     }
 
-    get_players( nPlayers_CT, nNum_CT, "e", "CT" );
+    get_players( nPlayers_CT, nNum_CT, "eh", "CT" );
 
     // Check whether the teams should be balanced
     //
     if( nNum_TE == nNum_CT || nNum_CT < 1 )
     {
-        return;
+        goto BotsComputation;
     }
 
     get_pcvar_string( g_nFlag, szFlag, charsmax( szFlag ) );
@@ -256,7 +270,7 @@ public Task_CheckTeams( )
         //
         if( nPlayer == g_nInvalidPlayer )
         {
-            return;
+            goto BotsComputation;
         }
 
         // Transfer them to the opposite team
@@ -364,7 +378,7 @@ public Task_CheckTeams( )
         //
         if( nPlayer == g_nInvalidPlayer )
         {
-            return;
+            goto BotsComputation;
         }
 
         // Transfer them to the opposite team
@@ -451,6 +465,137 @@ public Task_CheckTeams( )
         //
         Task_CheckTeams( );
     }
+
+BotsComputation:
+
+    if( !g_bBotsAreLikeHumans )
+    {
+        while( ( BotsNum( CS_TEAM_T ) - BotsNum( CS_TEAM_CT ) ) > max( 1, get_pcvar_num( g_nDifference_TE ) ) )
+        {
+            // Get a terrorist
+            //
+            if( !get_pcvar_num( g_nAuto ) )
+            {
+                nPlayer = FindBotByFrags( bool: get_pcvar_num( g_nSetting ), CS_TEAM_T );
+            }
+
+            else
+            {
+                nPlayer = FindBotByFrags( CheckTeamScoring( CS_TEAM_CT ) > CheckTeamScoring( CS_TEAM_T ), CS_TEAM_T );
+            }
+
+            // Is this specified selected bot a valid one?
+            //
+            if( nPlayer == g_nInvalidPlayer )
+            {
+                break;
+            }
+
+            // Transfer them to the opposite team
+            //
+            cs_set_user_team( nPlayer, CS_TEAM_CT );
+
+            // Announce all
+            //
+            if( ( nAnnounceAllType = get_pcvar_num( g_nAnnounceAll ) ) )
+            {
+                get_user_name( nPlayer, szName, charsmax( szName ) );
+                {
+                    if( nAnnounceAllType == 1 || g_nSayTextMsg < 1 )
+                    {
+                        client_print( 0, print_chat, "%s %s joined the Counter-Terrorists", g_szPluginTalkTag, szName );
+                    }
+
+                    else
+                    {
+                        sendSayText( 0, 35 /** \x03 is blue */, "\x04%s\x03 %s\x01 joined the\x03 Counter-Terrorists", g_szPluginTalkTag, szName );
+                    }
+                }
+            }
+
+            // Audio alert them if needed
+            //
+            if( get_pcvar_num( g_nAudio ) )
+            {
+                if( get_pcvar_num( g_nAudioType ) == 1 )
+                {
+                    if( is_user_alive( nPlayer ) )
+                    {
+                        emit_sound( nPlayer, CHAN_BODY, g_szWaveAudioFilePath, VOL_NORM, ATTN_NORM, 0, PITCH_NORM );
+                    }
+                }
+            }
+        }
+
+        while( ( BotsNum( CS_TEAM_CT ) - BotsNum( CS_TEAM_T ) ) > max( 1, get_pcvar_num( g_nDifference_CT ) ) )
+        {
+            // Get a counter-terrorist
+            //
+            if( !get_pcvar_num( g_nAuto ) )
+            {
+                nPlayer = FindBotByFrags( bool: get_pcvar_num( g_nSetting ), CS_TEAM_CT );
+            }
+
+            else
+            {
+                nPlayer = FindBotByFrags( CheckTeamScoring( CS_TEAM_CT ) > CheckTeamScoring( CS_TEAM_T ), CS_TEAM_CT );
+            }
+
+            // Is this specified selected bot a valid one?
+            //
+            if( nPlayer == g_nInvalidPlayer )
+            {
+                break;
+            }
+
+            // Transfer them to the opposite team
+            //
+            cs_set_user_team( nPlayer, CS_TEAM_T );
+
+            // Announce all
+            //
+            if( ( nAnnounceAllType = get_pcvar_num( g_nAnnounceAll ) ) )
+            {
+                get_user_name( nPlayer, szName, charsmax( szName ) );
+                {
+                    if( nAnnounceAllType == 1 || g_nSayTextMsg < 1 )
+                    {
+                        client_print( 0, print_chat, "%s %s joined the Terrorists", g_szPluginTalkTag, szName );
+                    }
+
+                    else
+                    {
+                        sendSayText( 0, 34 /** \x03 is red */, "\x04%s\x03 %s\x01 joined the\x03 Terrorists", g_szPluginTalkTag, szName );
+                    }
+                }
+            }
+
+            // Audio alert them if needed
+            //
+            if( get_pcvar_num( g_nAudio ) )
+            {
+                if( get_pcvar_num( g_nAudioType ) == 1 )
+                {
+                    if( is_user_alive( nPlayer ) )
+                    {
+                        emit_sound( nPlayer, CHAN_BODY, g_szWaveAudioFilePath, VOL_NORM, ATTN_NORM, 0, PITCH_NORM );
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Read bots count in a team
+//
+BotsNum( CsTeams: nTeam )
+{
+    static nPlayers[ 32 ], nNum;
+    {
+        get_players( nPlayers, nNum, "deh", nTeam == CS_TEAM_T ? "TERRORIST" : "CT" );
+    }
+
+    return nNum;
 }
 
 // This function will return the player with the lowest/ highest frags from one team or `INVALID_PLAYER`
@@ -459,7 +604,71 @@ FindPlayerByFrags( bool: bByLowFrags, CsTeams: nTeam )
 {
     static nWho, nPlayers[ 32 ], nNum, nPlayer, nIter, nMinMaxFrags, nFrags;
 
-    get_players( nPlayers, nNum, g_bCsdmActive ? "e" : "be", nTeam == CS_TEAM_T ? "TERRORIST" : "CT" );
+    if( g_bBotsAreLikeHumans )
+    {
+        get_players( nPlayers, nNum, g_bCsdmActive ? "eh" : "beh", nTeam == CS_TEAM_T ? "TERRORIST" : "CT" );
+    }
+
+    else
+    {
+        get_players( nPlayers, nNum, g_bCsdmActive ? "ceh" : "bceh", nTeam == CS_TEAM_T ? "TERRORIST" : "CT" );
+    }
+
+    // The lowest/ highest number
+    //
+    nMinMaxFrags = bByLowFrags ? ( ( 67108864 ) /* Highest */ ) : ( ( -67108864 ) /* Lowest */ );
+
+    // Invalid player stamp
+    //
+    nWho = g_nInvalidPlayer;
+
+    for( nIter = 0; nIter < nNum; nIter++ )
+    {
+        nPlayer = nPlayers[ nIter ];
+
+        if( g_nFlagNum > 0 )
+        {
+            if( get_user_flags( nPlayer ) & g_nFlagNum )
+            {
+                continue;
+            }
+        }
+
+        nFrags = get_user_frags( nPlayer );
+
+        if( bByLowFrags )
+        {
+            if( nFrags < nMinMaxFrags )
+            {
+                nMinMaxFrags = nFrags;
+                {
+                    nWho = nPlayer;
+                }
+            }
+        }
+
+        else
+        {
+            if( nFrags > nMinMaxFrags )
+            {
+                nMinMaxFrags = nFrags;
+                {
+                    nWho = nPlayer;
+                }
+            }
+        }
+    }
+
+    return nWho;
+}
+
+// This function will return the bot with the lowest/ highest frags from one team or `INVALID_PLAYER`
+//
+FindBotByFrags( bool: bByLowFrags, CsTeams: nTeam )
+{
+    static nWho, nPlayers[ 32 ], nNum, nPlayer, nIter, nMinMaxFrags, nFrags;
+
+    get_players( nPlayers, nNum, g_bCsdmActive ? "deh" : "bdeh", nTeam == CS_TEAM_T ? "TERRORIST" : "CT" );
 
     // The lowest/ highest number
     //
@@ -515,7 +724,7 @@ CheckTeamScoring( CsTeams: nTeam )
 {
     static nPlayers[ 32 ], nNum, nPlayer, nIter, nFrags;
 
-    get_players( nPlayers, nNum, "e", nTeam == CS_TEAM_T ? "TERRORIST" : "CT" );
+    get_players( nPlayers, nNum, "eh", nTeam == CS_TEAM_T ? "TERRORIST" : "CT" );
 
     if( nNum < 1 )
     {

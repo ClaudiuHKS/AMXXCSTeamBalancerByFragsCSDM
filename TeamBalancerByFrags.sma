@@ -1,10 +1,16 @@
 
+/*** ----------------------------------------------------------------------------------------------------------------------- ***/
+
 // Use "\"some quoted string inside a string\"" instead of "^"some quoted string inside a string^""
 //
 #pragma ctrlchar '\'
 
+/*** ----------------------------------------------------------------------------------------------------------------------- ***/
+
 #include < amxmodx > // register_cvar, ...
 #include < cstrike > // cs_set_user_team, ...
+
+/*** ----------------------------------------------------------------------------------------------------------------------- ***/
 
 // The plugin version
 //
@@ -18,13 +24,11 @@ new const g_szSoundDirectoryName[ ] = "sound";
 //
 new const g_szWaveAudioFilePath[ ] = "team_balancer_by_frags/transfer.wav";
 
-// The plugin talk tag
-//
-new const g_szPluginTalkTag[ ] = "[Team Balancer]";
-
 // This is a negative number
 //
 new const g_nInvalidPlayer = -1;
+
+/*** ----------------------------------------------------------------------------------------------------------------------- ***/
 
 // Check whether the server is running `CS:DM` (has valid `csdm_active` console variable)
 //
@@ -37,6 +41,14 @@ new bool: g_bCsdmActive;
 // Console variable to set the checking frequency in seconds
 //
 new g_nFrequency;
+
+// Frequency value cached globally
+//
+new Float: g_fFrequency;
+
+// Console variable to allow bots computation delay after humans are computed to avoid chat spamming (humans are computed first)
+//
+new g_nBotsDelay;
 
 // Console variable to set the maximum difference between terrorists and counter terrorists
 //
@@ -53,6 +65,14 @@ new g_nSetting;
 // Console variable intended to store the plugin version
 //
 new g_nVersion;
+
+// The plugin talk tag
+//
+new g_nTag;
+
+// Cached for performance
+//
+new g_szTag[ 64 ];
 
 // Console variable to set whether this plugin auto decides if the player picked up for transfer has the lowest or the highest score (frags)
 // from his team depending on the enemy team overall scoring
@@ -96,7 +116,7 @@ new g_nAnnounceAll;
 
 // Cache for performance
 //
-new g_nAnnounceAllTypeNum;
+new g_nAnnounceAllNum;
 
 // Console variable to announce the player on their screen when transferred
 //
@@ -161,7 +181,8 @@ public plugin_init( )
         g_nVersion = register_cvar( "team_balancer_by_frags", g_szPluginVersion, FCVAR_SERVER | FCVAR_SPONLY );
     }
 
-    g_nFrequency = register_cvar( "team_balancer_frequency", "10.0" );
+    g_nFrequency = register_cvar( "team_balancer_frequency", "5.0" );
+    g_nBotsDelay = register_cvar( "team_balancer_bots_delay", "2.5" );
     g_nDifference_TE = register_cvar( "team_balancer_te_difference", "1" );
     g_nDifference_CT = register_cvar( "team_balancer_ct_difference", "1" );
     g_nSetting = register_cvar( "team_balancer_by_low_frags", "1" );
@@ -171,6 +192,7 @@ public plugin_init( )
     g_nAnnounceType = register_cvar( "team_balancer_announce_type", "0" );
     g_nAnnounceAll = register_cvar( "team_balancer_announce_all", "2" );
     g_nFlag = register_cvar( "team_balancer_admin_flag", "a" );
+    g_nTag = register_cvar( "team_balancer_talk_tag", "[Team Balancer]" );
     g_nAudio = register_cvar( "team_balancer_audio", "1" );
     g_nAudioType = register_cvar( "team_balancer_audio_type", "0" );
     g_nScreenFade = register_cvar( "team_balancer_screen_fade", "1" );
@@ -187,9 +209,14 @@ public plugin_init( )
     g_nScreenFadeRGBA_CT[ 2 ] = register_cvar( "team_balancer_sf_ct_b", "200" ); /// Blue
     g_nScreenFadeRGBA_CT[ 3 ] = register_cvar( "team_balancer_sf_ct_a", "240" ); /// Alpha
 
-    set_task( get_pcvar_float( g_nFrequency ), "Task_CheckTeams", 0, "", 0, "b", 0 ); // Repeat indefinitely
+    g_fFrequency = floatclamp( get_pcvar_float( g_nFrequency ), 0.25, 60.0 );
+    {
+        set_task( g_fFrequency, "Task_CheckTeams", 0, "", 0, "b", 0 ); // Repeat indefinitely
+    }
 
     g_nCsdmActive = get_cvar_pointer( "csdm_active" );
+
+    return PLUGIN_CONTINUE;
 }
 
 // Executes before `plugin_init`
@@ -206,6 +233,8 @@ public plugin_precache( )
             }
         }
     }
+
+    return PLUGIN_CONTINUE;
 }
 
 // Executes after `plugin_init`
@@ -219,12 +248,15 @@ public plugin_cfg( )
     {
         set_pcvar_string( g_nVersion, g_szPluginVersion );
     }
+
+    return PLUGIN_CONTINUE;
 }
 
 // Check the teams
 //
 public Task_CheckTeams( )
 {
+    static Float: fBotsDelay, Float: fDifference;
     static szName[ 32 ], szFlag[ 2 ], nPlayers_TE[ 32 ], nPlayers_CT[ 32 ], nNum_TE, nNum_CT, nPlayer;
 
     // Cache global data for performance
@@ -235,21 +267,24 @@ public Task_CheckTeams( )
         {
             g_nAudioTypeNum = get_pcvar_num( g_nAudioType );
             {
-                g_nAnnounceAllTypeNum = get_pcvar_num( g_nAnnounceAll );
+                g_nAnnounceAllNum = get_pcvar_num( g_nAnnounceAll );
                 {
-                    get_pcvar_string( g_nFlag, szFlag, charsmax( szFlag ) );
+                    get_pcvar_string( g_nTag, g_szTag, charsmax( g_szTag ) );
                     {
-                        g_nFlagNum = read_flags( szFlag );
-                    }
+                        get_pcvar_string( g_nFlag, szFlag, charsmax( szFlag ) );
+                        {
+                            g_nFlagNum = read_flags( szFlag );
+                        }
 
-                    if( g_nCsdmActive > 0 )
-                    {
-                        g_bCsdmActive = bool: get_pcvar_num( g_nCsdmActive );
-                    }
+                        if( g_nCsdmActive > 0 )
+                        {
+                            g_bCsdmActive = bool: get_pcvar_num( g_nCsdmActive );
+                        }
 
-                    else
-                    {
-                        g_bCsdmActive = false;
+                        else
+                        {
+                            g_bCsdmActive = false;
+                        }
                     }
                 }
             }
@@ -260,20 +295,13 @@ public Task_CheckTeams( )
     //
     get_players( nPlayers_TE, nNum_TE, "eh", "TERRORIST" );
 
-    // Check whether the teams should be balanced
-    //
-    if( nNum_TE < 1 )
-    {
-        goto BotsComputation;
-    }
-
     // Read counter terrorist team size in players count excluding hltv proxies
     //
     get_players( nPlayers_CT, nNum_CT, "eh", "CT" );
 
     // Check whether the teams should be balanced
     //
-    if( nNum_TE == nNum_CT || nNum_CT < 1 )
+    if( nNum_TE == nNum_CT )
     {
         goto BotsComputation;
     }
@@ -316,29 +344,29 @@ public Task_CheckTeams( )
 
             else if( g_nAnnounceTypeNum == 1 || g_nSayTextMsg < 1 )
             {
-                client_print( nPlayer, print_chat, "%s You've joined the Counter-Terrorists", g_szPluginTalkTag );
+                client_print( nPlayer, print_chat, "%s You've joined the Counter-Terrorists", g_szTag );
             }
 
             else
             {
-                sendSayText( nPlayer, 35 /** \x03 is blue */, "\x04%s\x01 You've joined the\x03 Counter-Terrorists", g_szPluginTalkTag );
+                sendSayText( nPlayer, 35 /** \x03 is blue */, "\x04%s\x01 You've joined the\x03 Counter-Terrorists", g_szTag );
             }
         }
 
         // Announce all
         //
-        if( g_nAnnounceAllTypeNum )
+        if( g_nAnnounceAllNum )
         {
             get_user_name( nPlayer, szName, charsmax( szName ) );
             {
-                if( g_nAnnounceAllTypeNum == 1 || g_nSayTextMsg < 1 )
+                if( g_nAnnounceAllNum == 1 || g_nSayTextMsg < 1 )
                 {
-                    client_print( 0, print_chat, "%s %s joined the Counter-Terrorists", g_szPluginTalkTag, szName );
+                    client_print( 0, print_chat, "%s %s joined the Counter-Terrorists", g_szTag, szName );
                 }
 
                 else
                 {
-                    sendSayText( 0, 35 /** \x03 is blue */, "\x04%s\x03 %s\x01 joined the\x03 Counter-Terrorists", g_szPluginTalkTag, szName );
+                    sendSayText( 0, 35 /** \x03 is blue */, "\x04%s\x03 %s\x01 joined the\x03 Counter-Terrorists", g_szTag, szName );
                 }
             }
         }
@@ -380,10 +408,6 @@ public Task_CheckTeams( )
                 client_cmd( nPlayer, "spk \"your now c team(e60) force\"" );
             }
         }
-
-        // Make sure the difference between players is alright
-        //
-        Task_CheckTeams( );
     }
 
     // Is the difference between counter terrorists and terrorists higher than the specified value?
@@ -424,29 +448,29 @@ public Task_CheckTeams( )
 
             else if( g_nAnnounceTypeNum == 1 || g_nSayTextMsg < 1 )
             {
-                client_print( nPlayer, print_chat, "%s You've joined the Terrorists", g_szPluginTalkTag );
+                client_print( nPlayer, print_chat, "%s You've joined the Terrorists", g_szTag );
             }
 
             else
             {
-                sendSayText( nPlayer, 34 /** \x03 is red */, "\x04%s\x01 You've joined the\x03 Terrorists", g_szPluginTalkTag );
+                sendSayText( nPlayer, 34 /** \x03 is red */, "\x04%s\x01 You've joined the\x03 Terrorists", g_szTag );
             }
         }
 
         // Announce all
         //
-        if( g_nAnnounceAllTypeNum )
+        if( g_nAnnounceAllNum )
         {
             get_user_name( nPlayer, szName, charsmax( szName ) );
             {
-                if( g_nAnnounceAllTypeNum == 1 || g_nSayTextMsg < 1 )
+                if( g_nAnnounceAllNum == 1 || g_nSayTextMsg < 1 )
                 {
-                    client_print( 0, print_chat, "%s %s joined the Terrorists", g_szPluginTalkTag, szName );
+                    client_print( 0, print_chat, "%s %s joined the Terrorists", g_szTag, szName );
                 }
 
                 else
                 {
-                    sendSayText( 0, 34 /** \x03 is red */, "\x04%s\x03 %s\x01 joined the\x03 Terrorists", g_szPluginTalkTag, szName );
+                    sendSayText( 0, 34 /** \x03 is red */, "\x04%s\x03 %s\x01 joined the\x03 Terrorists", g_szTag, szName );
                 }
             }
         }
@@ -488,10 +512,6 @@ public Task_CheckTeams( )
                 client_cmd( nPlayer, "spk \"your now team(e60) force\"" );
             }
         }
-
-        // Make sure the difference between players is alright
-        //
-        Task_CheckTeams( );
     }
 
 // Compute the bots in the end
@@ -500,120 +520,145 @@ BotsComputation:
 
     if( !g_bBotsAreLikeHumans )
     {
-        while( ( BotsNum( CS_TEAM_T ) - BotsNum( CS_TEAM_CT ) ) > max( 1, get_pcvar_num( g_nDifference_TE ) ) )
+        fBotsDelay = floatclamp( get_pcvar_float( g_nBotsDelay ), 0.1, 45.0 );
         {
-            // Get a terrorist bot
-            //
-            if( !get_pcvar_num( g_nAuto ) )
+            if( fBotsDelay >= g_fFrequency )
             {
-                nPlayer = FindBotByFrags( bool: get_pcvar_num( g_nSetting ), CS_TEAM_T );
-            }
-
-            else
-            {
-                nPlayer = FindBotByFrags( CheckTeamScoring( CS_TEAM_CT ) > CheckTeamScoring( CS_TEAM_T ), CS_TEAM_T );
-            }
-
-            // Is this specified selected bot a valid one?
-            //
-            if( nPlayer == g_nInvalidPlayer )
-            {
-                break;
-            }
-
-            // Transfer them to the opposite team
-            //
-            cs_set_user_team( nPlayer, CS_TEAM_CT );
-
-            // Announce all
-            //
-            if( g_nAnnounceAllTypeNum )
-            {
-                get_user_name( nPlayer, szName, charsmax( szName ) );
+                fDifference = fBotsDelay - g_fFrequency;
                 {
-                    if( g_nAnnounceAllTypeNum == 1 || g_nSayTextMsg < 1 )
+                    fBotsDelay -= fDifference;
                     {
-                        client_print( 0, print_chat, "%s %s joined the Counter-Terrorists", g_szPluginTalkTag, szName );
-                    }
-
-                    else
-                    {
-                        sendSayText( 0, 35 /** \x03 is blue */, "\x04%s\x03 %s\x01 joined the\x03 Counter-Terrorists", g_szPluginTalkTag, szName );
-                    }
-                }
-            }
-
-            // Audio alert them if needed
-            //
-            if( get_pcvar_num( g_nAudio ) )
-            {
-                if( g_nAudioTypeNum == 1 )
-                {
-                    if( is_user_alive( nPlayer ) )
-                    {
-                        emit_sound( nPlayer, CHAN_BODY, g_szWaveAudioFilePath, VOL_NORM, ATTN_NORM, 0, PITCH_NORM );
+                        fBotsDelay -= 0.1;
                     }
                 }
             }
         }
 
-        while( ( BotsNum( CS_TEAM_CT ) - BotsNum( CS_TEAM_T ) ) > max( 1, get_pcvar_num( g_nDifference_CT ) ) )
+        set_task( fBotsDelay, "Task_ManageBots", 0, "", 0, "", 0 );
+    }
+
+    return PLUGIN_CONTINUE;
+}
+
+public Task_ManageBots( )
+{
+    static nPlayer, szName[ 32 ];
+
+    if( ( BotsNum( CS_TEAM_T ) - BotsNum( CS_TEAM_CT ) ) > max( 1, get_pcvar_num( g_nDifference_TE ) ) )
+    {
+        // Get a terrorist bot
+        //
+        if( !get_pcvar_num( g_nAuto ) )
         {
-            // Get a counter terrorist bot
-            //
-            if( !get_pcvar_num( g_nAuto ) )
-            {
-                nPlayer = FindBotByFrags( bool: get_pcvar_num( g_nSetting ), CS_TEAM_CT );
-            }
+            nPlayer = FindBotByFrags( bool: get_pcvar_num( g_nSetting ), CS_TEAM_T );
+        }
 
-            else
-            {
-                nPlayer = FindBotByFrags( CheckTeamScoring( CS_TEAM_T ) > CheckTeamScoring( CS_TEAM_CT ), CS_TEAM_CT );
-            }
+        else
+        {
+            nPlayer = FindBotByFrags( CheckTeamScoring( CS_TEAM_CT ) > CheckTeamScoring( CS_TEAM_T ), CS_TEAM_T );
+        }
 
-            // Is this specified selected bot a valid one?
-            //
-            if( nPlayer == g_nInvalidPlayer )
-            {
-                break;
-            }
+        // Is this specified selected bot a valid one?
+        //
+        if( nPlayer == g_nInvalidPlayer )
+        {
+            return PLUGIN_CONTINUE;
+        }
 
-            // Transfer them to the opposite team
-            //
-            cs_set_user_team( nPlayer, CS_TEAM_T );
+        // Transfer them to the opposite team
+        //
+        cs_set_user_team( nPlayer, CS_TEAM_CT );
 
-            // Announce all
-            //
-            if( g_nAnnounceAllTypeNum )
+        // Announce all
+        //
+        if( g_nAnnounceAllNum )
+        {
+            get_user_name( nPlayer, szName, charsmax( szName ) );
             {
-                get_user_name( nPlayer, szName, charsmax( szName ) );
+                if( g_nAnnounceAllNum == 1 || g_nSayTextMsg < 1 )
                 {
-                    if( g_nAnnounceAllTypeNum == 1 || g_nSayTextMsg < 1 )
-                    {
-                        client_print( 0, print_chat, "%s %s joined the Terrorists", g_szPluginTalkTag, szName );
-                    }
+                    client_print( 0, print_chat, "%s %s joined the Counter-Terrorists", g_szTag, szName );
+                }
 
-                    else
-                    {
-                        sendSayText( 0, 34 /** \x03 is red */, "\x04%s\x03 %s\x01 joined the\x03 Terrorists", g_szPluginTalkTag, szName );
-                    }
+                else
+                {
+                    sendSayText( 0, 35 /** \x03 is blue */, "\x04%s\x03 %s\x01 joined the\x03 Counter-Terrorists", g_szTag, szName );
                 }
             }
+        }
 
-            // Audio alert them if needed
-            //
-            if( get_pcvar_num( g_nAudio ) )
+        // Audio alert them if needed
+        //
+        if( get_pcvar_num( g_nAudio ) )
+        {
+            if( g_nAudioTypeNum == 1 )
             {
-                if( g_nAudioTypeNum == 1 )
+                if( is_user_alive( nPlayer ) )
                 {
-                    if( is_user_alive( nPlayer ) )
-                    {
-                        emit_sound( nPlayer, CHAN_BODY, g_szWaveAudioFilePath, VOL_NORM, ATTN_NORM, 0, PITCH_NORM );
-                    }
+                    emit_sound( nPlayer, CHAN_BODY, g_szWaveAudioFilePath, VOL_NORM, ATTN_NORM, 0, PITCH_NORM );
                 }
             }
         }
     }
+
+    else if( ( BotsNum( CS_TEAM_CT ) - BotsNum( CS_TEAM_T ) ) > max( 1, get_pcvar_num( g_nDifference_CT ) ) )
+    {
+        // Get a counter terrorist bot
+        //
+        if( !get_pcvar_num( g_nAuto ) )
+        {
+            nPlayer = FindBotByFrags( bool: get_pcvar_num( g_nSetting ), CS_TEAM_CT );
+        }
+
+        else
+        {
+            nPlayer = FindBotByFrags( CheckTeamScoring( CS_TEAM_T ) > CheckTeamScoring( CS_TEAM_CT ), CS_TEAM_CT );
+        }
+
+        // Is this specified selected bot a valid one?
+        //
+        if( nPlayer == g_nInvalidPlayer )
+        {
+            return PLUGIN_CONTINUE;
+        }
+
+        // Transfer them to the opposite team
+        //
+        cs_set_user_team( nPlayer, CS_TEAM_T );
+
+        // Announce all
+        //
+        if( g_nAnnounceAllNum )
+        {
+            get_user_name( nPlayer, szName, charsmax( szName ) );
+            {
+                if( g_nAnnounceAllNum == 1 || g_nSayTextMsg < 1 )
+                {
+                    client_print( 0, print_chat, "%s %s joined the Terrorists", g_szTag, szName );
+                }
+
+                else
+                {
+                    sendSayText( 0, 34 /** \x03 is red */, "\x04%s\x03 %s\x01 joined the\x03 Terrorists", g_szTag, szName );
+                }
+            }
+        }
+
+        // Audio alert them if needed
+        //
+        if( get_pcvar_num( g_nAudio ) )
+        {
+            if( g_nAudioTypeNum == 1 )
+            {
+                if( is_user_alive( nPlayer ) )
+                {
+                    emit_sound( nPlayer, CHAN_BODY, g_szWaveAudioFilePath, VOL_NORM, ATTN_NORM, 0, PITCH_NORM );
+                }
+            }
+        }
+    }
+
+    return PLUGIN_CONTINUE;
 }
 
 // Read bots count in a team
@@ -778,36 +823,41 @@ CheckTeamScoring( CsTeams: nTeam )
 //
 PerformPlayerScreenFade( nPlayer, CsTeams: nTeam )
 {
-    message_begin( MSG_ONE_UNRELIABLE, g_nScreenFadeMsg, { 0, 0, 0 } /** Message origin */, nPlayer );
+    if( nPlayer > 0 )
     {
-        write_short( floatround( 4096.0 /** UNIT_SECOND = ( 1 << 12 ) */ * floatabs( get_pcvar_float( g_nScreenFadeDuration ) ), floatround_round ) ); /// Duration
-        write_short( floatround( 4096.0 /** UNIT_SECOND = ( 1 << 12 ) */ * floatabs( get_pcvar_float( g_nScreenFadeHoldTime ) ), floatround_round ) ); /// Hold time
+        message_begin( MSG_ONE_UNRELIABLE, g_nScreenFadeMsg, { 0, 0, 0 } /** Message origin */, nPlayer );
         {
-            write_short( 0 /** FFADE_IN = 0x0000 */ ); /// Fade type
+            write_short( floatround( 4096.0 /** UNIT_SECOND = ( 1 << 12 ) */ * floatabs( get_pcvar_float( g_nScreenFadeDuration ) ), floatround_round ) ); /// Duration
+            write_short( floatround( 4096.0 /** UNIT_SECOND = ( 1 << 12 ) */ * floatabs( get_pcvar_float( g_nScreenFadeHoldTime ) ), floatround_round ) ); /// Hold time
             {
-                if( nTeam == CS_TEAM_T )
-                { /// Red
-                    write_byte( clamp( get_pcvar_num( g_nScreenFadeRGBA_TE[ 0 ] ), 0, 255 ) ); /// Red
-                    write_byte( clamp( get_pcvar_num( g_nScreenFadeRGBA_TE[ 1 ] ), 0, 255 ) ); /// Green
-                    write_byte( clamp( get_pcvar_num( g_nScreenFadeRGBA_TE[ 2 ] ), 0, 255 ) ); /// Blue
-                    {
-                        write_byte( clamp( get_pcvar_num( g_nScreenFadeRGBA_TE[ 3 ] ), 0, 255 ) ); /// Alpha
+                write_short( 0 /** FFADE_IN = 0x0000 */ ); /// Fade type
+                {
+                    if( nTeam == CS_TEAM_T )
+                    { /// Red
+                        write_byte( clamp( get_pcvar_num( g_nScreenFadeRGBA_TE[ 0 ] ), 0, 255 ) ); /// Red
+                        write_byte( clamp( get_pcvar_num( g_nScreenFadeRGBA_TE[ 1 ] ), 0, 255 ) ); /// Green
+                        write_byte( clamp( get_pcvar_num( g_nScreenFadeRGBA_TE[ 2 ] ), 0, 255 ) ); /// Blue
+                        {
+                            write_byte( clamp( get_pcvar_num( g_nScreenFadeRGBA_TE[ 3 ] ), 0, 255 ) ); /// Alpha
+                        }
                     }
-                }
 
-                else
-                { /// Blue
-                    write_byte( clamp( get_pcvar_num( g_nScreenFadeRGBA_CT[ 0 ] ), 0, 255 ) ); /// Red
-                    write_byte( clamp( get_pcvar_num( g_nScreenFadeRGBA_CT[ 1 ] ), 0, 255 ) ); /// Green
-                    write_byte( clamp( get_pcvar_num( g_nScreenFadeRGBA_CT[ 2 ] ), 0, 255 ) ); /// Blue
-                    {
-                        write_byte( clamp( get_pcvar_num( g_nScreenFadeRGBA_CT[ 3 ] ), 0, 255 ) ); /// Alpha
+                    else
+                    { /// Blue
+                        write_byte( clamp( get_pcvar_num( g_nScreenFadeRGBA_CT[ 0 ] ), 0, 255 ) ); /// Red
+                        write_byte( clamp( get_pcvar_num( g_nScreenFadeRGBA_CT[ 1 ] ), 0, 255 ) ); /// Green
+                        write_byte( clamp( get_pcvar_num( g_nScreenFadeRGBA_CT[ 2 ] ), 0, 255 ) ); /// Blue
+                        {
+                            write_byte( clamp( get_pcvar_num( g_nScreenFadeRGBA_CT[ 3 ] ), 0, 255 ) ); /// Alpha
+                        }
                     }
                 }
             }
         }
+        message_end( );
     }
-    message_end( );
+
+    return PLUGIN_CONTINUE;
 }
 
 // Colored print_chat (print_talk) message in CS & CZ
@@ -865,4 +915,6 @@ sendSayText( nPlayer, nIndex, const szIn[ ], any: ... )
             }
         }
     }
+
+    return PLUGIN_CONTINUE;
 }

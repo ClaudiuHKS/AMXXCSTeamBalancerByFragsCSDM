@@ -1,7 +1,11 @@
 # AMXXCSTeamBalancerByFragsCSDM
 https://forums.alliedmods.net/showthread.php?t=161175
 
-team_balancer_frequency 10.0 // Team check frequency in seconds (float, for example can be 9.125)
+team_balancer_frequency 5.0 // Team check frequency in seconds (float, for example can be 9.125)
+
+team_balancer_bots_delay 2.5 // Ignored if 'team_balancer_bots' is 1. So, after every 'team check above (humans only)' we will 'bots check' every time. Apply seconds delay between 'humans check' and 'bots check'. To avoid chat spam & stuff. This value needs to be smaller than 'team_balancer_frequency' value (float)
+
+team_balancer_talk_tag "[Team Balancer]" // Chat (talk) tag to use. This isn't used in 'print_center' messages.
 
 team_balancer_te_difference 1 // Maximum difference between terrorists team and counter-terrorists
 

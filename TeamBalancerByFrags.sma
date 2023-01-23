@@ -24,7 +24,7 @@ new const g_szSoundDirectoryName[ ] = "sound";
 //
 new const g_szWaveAudioFilePath[ ] = "team_balancer_by_frags/transfer.wav";
 
-// This is a negative number
+// This is a negative number which represents a player that is not valid
 //
 new const g_nInvalidPlayer = -1;
 
@@ -42,7 +42,7 @@ new bool: g_bCsdmActive;
 //
 new g_nFrequency;
 
-// Frequency value cached globally
+// Frequency value globally cached
 //
 new Float: g_fFrequency;
 
@@ -78,6 +78,11 @@ new g_szTag[ 64 ];
 // from his team depending on the enemy team overall scoring
 //
 new g_nAuto;
+
+// Convar to allow sorting (with this we allow the game server to transfer the second or the third best player for example),
+// in order to transfer the one that is the most appropiate based on their score (frags)
+//
+new g_nSorting;
 
 // Console variable to set whether or not to use audio alert when transferring a player
 //
@@ -170,6 +175,14 @@ new g_nFlag;
 //
 new g_nFlagNum;
 
+// Total T team score (frags)
+//
+new g_nScoring_TE;
+
+// Total CT team score (frags)
+//
+new g_nScoring_CT;
+
 public plugin_init( )
 {
     register_plugin( "Team Balancer by Frags", g_szPluginVersion, "Hattrick (claudiuhks)" );
@@ -198,6 +211,7 @@ public plugin_init( )
     g_nScreenFade = register_cvar( "team_balancer_screen_fade", "1" );
     g_nScreenFadeDuration = register_cvar( "team_balancer_sf_duration", "1.0" );
     g_nScreenFadeHoldTime = register_cvar( "team_balancer_sf_hold_time", "0.0" );
+    g_nSorting = register_cvar( "team_balancer_sorting", "1" );
 
     g_nScreenFadeRGBA_TE[ 0 ] = register_cvar( "team_balancer_sf_te_r", "200" ); /// Red
     g_nScreenFadeRGBA_TE[ 1 ] = register_cvar( "team_balancer_sf_te_g", "40" ); /// Green
@@ -209,10 +223,7 @@ public plugin_init( )
     g_nScreenFadeRGBA_CT[ 2 ] = register_cvar( "team_balancer_sf_ct_b", "200" ); /// Blue
     g_nScreenFadeRGBA_CT[ 3 ] = register_cvar( "team_balancer_sf_ct_a", "240" ); /// Alpha
 
-    g_fFrequency = floatclamp( get_pcvar_float( g_nFrequency ), 0.25, 60.0 );
-    {
-        set_task( g_fFrequency, "Task_CheckTeams", 0, "", 0, "b", 0 ); // Repeat indefinitely
-    }
+    set_task( 0.25, "Task_Install", 0, "", 0, "", 0 );
 
     g_nCsdmActive = get_cvar_pointer( "csdm_active" );
 
@@ -252,12 +263,23 @@ public plugin_cfg( )
     return PLUGIN_CONTINUE;
 }
 
+// Get ready
+//
+public Task_Install( )
+{
+    g_fFrequency = floatclamp( get_pcvar_float( g_nFrequency ), 0.25, 60.0 );
+    {
+        set_task( g_fFrequency, "Task_CheckTeams", 0, "", 0, "b", 0 ); // Repeat indefinitely
+    }
+}
+
 // Check the teams
 //
 public Task_CheckTeams( )
 {
-    static Float: fBotsDelay, Float: fDifference;
-    static szName[ 32 ], szFlag[ 2 ], nPlayers_TE[ 32 ], nPlayers_CT[ 32 ], nNum_TE, nNum_CT, nPlayer;
+    // Data
+    //
+    static szName[ 32 ], szFlag[ 2 ], nPlayers_TE[ 32 ], nPlayers_CT[ 32 ], nNum_TE, nNum_CT, nPlayer, Float: fBotsDelay, Float: fDifference;
 
     // Cache global data for performance
     //
@@ -319,7 +341,21 @@ public Task_CheckTeams( )
 
         else
         {
-            nPlayer = FindPlayerByFrags( CheckTeamScoring( CS_TEAM_CT ) > CheckTeamScoring( CS_TEAM_T ), CS_TEAM_T );
+            if( !get_pcvar_num( g_nSorting ) )
+            {
+                nPlayer = FindPlayerByFrags( ( g_nScoring_CT = CheckTeamScoring( CS_TEAM_CT ) ) >= ( g_nScoring_TE = CheckTeamScoring( CS_TEAM_T ) ), CS_TEAM_T );
+            }
+
+            else
+            {
+                g_nScoring_CT = CheckTeamScoring( CS_TEAM_CT );
+                {
+                    g_nScoring_TE = CheckTeamScoring( CS_TEAM_T );
+                    {
+                        nPlayer = FindSortedPlayer( CS_TEAM_T );
+                    }
+                }
+            }
         }
 
         // Is this specified selected player a valid one?
@@ -423,7 +459,21 @@ public Task_CheckTeams( )
 
         else
         {
-            nPlayer = FindPlayerByFrags( CheckTeamScoring( CS_TEAM_T ) > CheckTeamScoring( CS_TEAM_CT ), CS_TEAM_CT );
+            if( !get_pcvar_num( g_nSorting ) )
+            {
+                nPlayer = FindPlayerByFrags( ( g_nScoring_TE = CheckTeamScoring( CS_TEAM_T ) ) >= ( g_nScoring_CT = CheckTeamScoring( CS_TEAM_CT ) ), CS_TEAM_CT );
+            }
+
+            else
+            {
+                g_nScoring_CT = CheckTeamScoring( CS_TEAM_CT );
+                {
+                    g_nScoring_TE = CheckTeamScoring( CS_TEAM_T );
+                    {
+                        nPlayer = FindSortedPlayer( CS_TEAM_CT );
+                    }
+                }
+            }
         }
 
         // Is this specified selected player a valid one?
@@ -555,7 +605,21 @@ public Task_ManageBots( )
 
         else
         {
-            nPlayer = FindBotByFrags( CheckTeamScoring( CS_TEAM_CT ) > CheckTeamScoring( CS_TEAM_T ), CS_TEAM_T );
+            if( !get_pcvar_num( g_nSorting ) )
+            {
+                nPlayer = FindBotByFrags( ( g_nScoring_CT = CheckTeamScoring( CS_TEAM_CT ) ) >= ( g_nScoring_TE = CheckTeamScoring( CS_TEAM_T ) ), CS_TEAM_T );
+            }
+
+            else
+            {
+                g_nScoring_CT = CheckTeamScoring( CS_TEAM_CT );
+                {
+                    g_nScoring_TE = CheckTeamScoring( CS_TEAM_T );
+                    {
+                        nPlayer = FindSortedBot( CS_TEAM_T );
+                    }
+                }
+            }
         }
 
         // Is this specified selected bot a valid one?
@@ -612,7 +676,21 @@ public Task_ManageBots( )
 
         else
         {
-            nPlayer = FindBotByFrags( CheckTeamScoring( CS_TEAM_T ) > CheckTeamScoring( CS_TEAM_CT ), CS_TEAM_CT );
+            if( !get_pcvar_num( g_nSorting ) )
+            {
+                nPlayer = FindBotByFrags( ( g_nScoring_TE = CheckTeamScoring( CS_TEAM_T ) ) >= ( g_nScoring_CT = CheckTeamScoring( CS_TEAM_CT ) ), CS_TEAM_CT );
+            }
+
+            else
+            {
+                g_nScoring_CT = CheckTeamScoring( CS_TEAM_CT );
+                {
+                    g_nScoring_TE = CheckTeamScoring( CS_TEAM_T );
+                    {
+                        nPlayer = FindSortedBot( CS_TEAM_CT );
+                    }
+                }
+            }
         }
 
         // Is this specified selected bot a valid one?
@@ -673,7 +751,7 @@ BotsNum( CsTeams: nTeam )
     return nNum;
 }
 
-// This function will return the player with the lowest/ highest frags from one team or `INVALID_PLAYER`
+// This function will return the player with the lowest/ highest frags from one team or `g_nInvalidPlayer`
 //
 FindPlayerByFrags( bool: bByLowFrags, CsTeams: nTeam )
 {
@@ -691,18 +769,14 @@ FindPlayerByFrags( bool: bByLowFrags, CsTeams: nTeam )
 
     // The lowest/ highest number
     //
-    nMinMaxFrags = bByLowFrags ? ( ( 67108864 ) /* Highest */ ) : ( ( -67108864 ) /* Lowest */ );
+    nMinMaxFrags = bByLowFrags ? ( ( 2000000000 ) /* Highest */ ) : ( ( -2000000000 ) /* Lowest */ );
 
-    // Invalid player stamp
-    //
-    nWho = g_nInvalidPlayer;
-
-    for( nIter = 0; nIter < nNum; nIter++ )
+    for( nIter = 0, nWho = g_nInvalidPlayer; nIter < nNum; nIter++ )
     {
         nPlayer = nPlayers[ nIter ];
 
         if( g_nFlagNum > 0 )
-        {
+        { /// Special access
             if( get_user_flags( nPlayer ) & g_nFlagNum )
             {
                 continue;
@@ -737,7 +811,7 @@ FindPlayerByFrags( bool: bByLowFrags, CsTeams: nTeam )
     return nWho;
 }
 
-// This function will return the bot with the lowest/ highest frags from one team or `INVALID_PLAYER`
+// This function will return the bot with the lowest/ highest frags from one team or `g_nInvalidPlayer`
 //
 FindBotByFrags( bool: bByLowFrags, CsTeams: nTeam )
 {
@@ -749,18 +823,14 @@ FindBotByFrags( bool: bByLowFrags, CsTeams: nTeam )
 
     // The lowest/ highest number
     //
-    nMinMaxFrags = bByLowFrags ? ( ( 67108864 ) /* Highest */ ) : ( ( -67108864 ) /* Lowest */ );
+    nMinMaxFrags = bByLowFrags ? ( ( 2000000000 ) /* Highest */ ) : ( ( -2000000000 ) /* Lowest */ );
 
-    // Invalid player stamp
-    //
-    nWho = g_nInvalidPlayer;
-
-    for( nIter = 0; nIter < nNum; nIter++ )
+    for( nIter = 0, nWho = g_nInvalidPlayer; nIter < nNum; nIter++ )
     {
         nPlayer = nPlayers[ nIter ];
 
         if( g_nFlagNum > 0 )
-        {
+        { /// Special access
             if( get_user_flags( nPlayer ) & g_nFlagNum )
             {
                 continue;
@@ -787,6 +857,112 @@ FindBotByFrags( bool: bByLowFrags, CsTeams: nTeam )
                 nMinMaxFrags = nFrags;
                 {
                     nWho = nPlayer;
+                }
+            }
+        }
+    }
+
+    return nWho;
+}
+
+// This function will return the player with the most appropiate frags for transfer from one team or `g_nInvalidPlayer`
+//
+FindSortedPlayer( CsTeams: nTeam )
+{
+    static nPlayers[ 32 ], nNum, nPlayer, nWho, nFrags, nIter, nData[ 32 ][ 2 /** [ 0 ] = player index & [ 1 ] = extra */ ], nEntries, nTopDifference;
+
+    if( g_bBotsAreLikeHumans )
+    {
+        get_players( nPlayers, nNum, g_bCsdmActive ? "eh" : "beh", nTeam == CS_TEAM_T ? "TERRORIST" : "CT" ); // Filter out hltv proxies
+    }
+
+    else
+    {
+        get_players( nPlayers, nNum, g_bCsdmActive ? "ceh" : "bceh", nTeam == CS_TEAM_T ? "TERRORIST" : "CT" ); // Filter out bots & hltv proxies
+    }
+
+    for( nIter = 0, nEntries = 0, nWho = g_nInvalidPlayer; nIter < nNum; nIter++ )
+    {
+        nPlayer = nPlayers[ nIter ];
+
+        if( g_nFlagNum > 0 )
+        { /// Special access
+            if( get_user_flags( nPlayer ) & g_nFlagNum )
+            {
+                continue;
+            }
+        }
+
+        nFrags = get_user_frags( nPlayer );
+        {
+            nData[ nEntries ][ 0 ] = nPlayer;
+            {
+                nData[ nEntries ][ 1 ] = ( ( nTeam == CS_TEAM_T ) ? ( abs( ( g_nScoring_TE - nFrags ) - ( g_nScoring_CT + nFrags ) ) ) : ( abs( ( g_nScoring_CT - nFrags ) - ( g_nScoring_TE + nFrags ) ) ) );
+            }
+        }
+
+        nEntries++;
+    }
+
+    if( nEntries > 0 )
+    {
+        for( nIter = 0, nTopDifference = 2000000000 /** A huge number */; nIter < nEntries; nIter++ )
+        {
+            if( nData[ nIter ][ 1 ] < nTopDifference )
+            {
+                nWho = nData[ nIter ][ 0 ];
+                {
+                    nTopDifference = nData[ nIter ][ 1 ];
+                }
+            }
+        }
+    }
+
+    return nWho;
+}
+
+// This function will return the bot with the most appropiate frags for transfer from one team or `g_nInvalidPlayer`
+//
+FindSortedBot( CsTeams: nTeam )
+{
+    static nPlayers[ 32 ], nNum, nPlayer, nWho, nFrags, nIter, nData[ 32 ][ 2 /** [ 0 ] = player index & [ 1 ] = extra */ ], nEntries, nTopDifference;
+
+    // Exclude human players & hltv proxies
+    //
+    get_players( nPlayers, nNum, g_bCsdmActive ? "deh" : "bdeh", nTeam == CS_TEAM_T ? "TERRORIST" : "CT" );
+
+    for( nIter = 0, nEntries = 0, nWho = g_nInvalidPlayer; nIter < nNum; nIter++ )
+    {
+        nPlayer = nPlayers[ nIter ];
+
+        if( g_nFlagNum > 0 )
+        { /// Special access
+            if( get_user_flags( nPlayer ) & g_nFlagNum )
+            {
+                continue;
+            }
+        }
+
+        nFrags = get_user_frags( nPlayer );
+        {
+            nData[ nEntries ][ 0 ] = nPlayer;
+            {
+                nData[ nEntries ][ 1 ] = ( ( nTeam == CS_TEAM_T ) ? ( abs( ( g_nScoring_TE - nFrags ) - ( g_nScoring_CT + nFrags ) ) ) : ( abs( ( g_nScoring_CT - nFrags ) - ( g_nScoring_TE + nFrags ) ) ) );
+            }
+        }
+
+        nEntries++;
+    }
+
+    if( nEntries > 0 )
+    {
+        for( nIter = 0, nTopDifference = 2000000000 /** A huge number */; nIter < nEntries; nIter++ )
+        {
+            if( nData[ nIter ][ 1 ] < nTopDifference )
+            {
+                nWho = nData[ nIter ][ 0 ];
+                {
+                    nTopDifference = nData[ nIter ][ 1 ];
                 }
             }
         }

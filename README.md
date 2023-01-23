@@ -50,3 +50,5 @@ team_balancer_sf_ct_a 240 // Alpha CT
 team_balancer_by_low_frags 1 // Transfer players having the lowest score (1) or highest score (0)
 
 team_balancer_auto 1 // If the enemy team is better or equal (better or equal scoring [frags]) we send to them a player with low frags to perform the balance or a player with high frags otherwise
+
+team_balancer_sorting 1 // Only works if 'team_balancer_auto' is on. If 'team_balancer_sorting' is on, players/ bots will be balanced depending on their score (frags). For example, the second or the third {... and so on ...} best player may also be considered for transfer

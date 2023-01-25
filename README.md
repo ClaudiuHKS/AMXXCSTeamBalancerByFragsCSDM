@@ -25,7 +25,7 @@ team_balancer_screen_fade 1 // Performs a screen fade effect on the player if no
 
 team_balancer_sf_duration 1.0 // Screen fade duration seconds, if screen fade enabled (float)
 
-team_balancer_sf_hold_time 0.0 // Screen fade hold time seconds, if screen fade enabled (float)
+team_balancer_sf_hold_time 0.1 // Screen fade hold time seconds, if screen fade enabled (float)
 
 team_balancer_audio 1 // Audio alert to the transferred player
 
@@ -52,3 +52,9 @@ team_balancer_by_low_frags 1 // Transfer players having the lowest score (1) or 
 team_balancer_auto 1 // If the enemy team is better or equal (better or equal scoring [frags]) we send to them a player with low frags to perform the balance or a player with high frags otherwise
 
 team_balancer_sorting 1 // Only works if 'team_balancer_auto' is on. If 'team_balancer_sorting' is on, players/ bots will be balanced depending on their score (frags). For example, the second or the third {... and so on ...} best player may also be considered for transfer
+
+team_balancer_respawn 1 // Recommended in CSDM mods but not limited to. Respawn players once transferred
+
+team_balancer_respawn_type 1 // If 1, players are respawned by 'csdm_respawn' (CSDM) function if that function exists in your game server. Will be respawned by 'spawn' (FUN) or 'dllfunc' (FAKEMETA) if these modules are present otherwise. If none above exist, only if the player is dead when transferred, 'cs_user_spawn' (CSTRIKE) function will be used. If 0, CSDM available or not, 'spawn', 'dllfunc' or 'cs_user_spawn' will be used to perform the respawn (this may be good if you want them respawned T/ CT side but you are using CSDM custom spawn points)
+
+team_balancer_respawn_delay 0.25 // Seconds delay between the player respawn moment and the announcements and screen fade (float)

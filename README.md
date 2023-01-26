@@ -55,6 +55,6 @@ team_balancer_sorting 1 // Only works if 'team_balancer_auto' is on. If 'team_ba
 
 team_balancer_respawn 1 // Recommended in CSDM mods but not limited to. Respawn players once transferred
 
-team_balancer_respawn_type 1 // If 1, players are respawned by 'csdm_respawn' (CSDM) function if that function exists in your game server. Will be respawned by 'spawn' (FUN) or 'dllfunc' (FAKEMETA) if these modules are present otherwise. If none above exist, only if the player is dead when transferred, 'cs_user_spawn' (CSTRIKE) function will be used. If 0, CSDM available or not, 'spawn', 'dllfunc' or 'cs_user_spawn' will be used to perform the respawn (this may be good if you want them respawned T/ CT side but you are using CSDM custom spawn points)
+team_balancer_respawn_type 1 // If 1, players are respawned by 'csdm_respawn' (CSDM) function if that function exists in your game server. Will be respawned by 'spawn' (FUN) or 'dllfunc' (FAKEMETA) if these modules are present otherwise. If none above exist, only if the player is dead when transferred, 'cs_user_spawn' (CSTRIKE) function will be used. If 0, CSDM available or not, 'spawn', 'dllfunc' or 'cs_user_spawn' will be used to perform the respawn (this may be good if you want them respawned T/ CT side but you are using CSDM custom spawn points set everywhere on the map)
 
 team_balancer_respawn_delay 0.25 // Seconds delay between the player respawn moment and the announcements and screen fade (float)

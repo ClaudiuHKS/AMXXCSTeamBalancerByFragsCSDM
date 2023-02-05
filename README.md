@@ -7,11 +7,11 @@ team_balancer_bots_delay 2.5 // Ignored if 'team_balancer_bots' is 1. So, after 
 
 team_balancer_talk_tag "[Team Balancer]" // Chat (talk) tag to use. This isn't used in 'print_center' messages.
 
-team_balancer_te_difference 1 // Maximum difference between terrorists team and counter-terrorists
+team_balancer_te_difference 1 // Maximum difference between terrorists team and counter terrorists
 
-team_balancer_ct_difference 1 // Maximum difference between counter-terrorists team and terrorists
+team_balancer_ct_difference 1 // Maximum difference between counter terrorists team and terrorists
 
-team_balancer_admin_flag "a" // Admin flag to set admins immune. Examples: a, b, c, d
+team_balancer_admin_flag "a" // Admin flag to set admins immune. Examples: a, b, c, d (use "" to disable this feature)
 
 team_balancer_bots 0 // Bots are taken as they were humans (1 = yes & 0 = no, so half bots T + half bots CT)
 

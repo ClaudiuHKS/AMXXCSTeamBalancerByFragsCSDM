@@ -23,7 +23,7 @@ native csdm_respawn( const nPlayer ); /** Optional */ /// The game server does n
 
 // The plugin version
 //
-static const g_szPluginVersion[ ] = "7.0";
+static const g_szPluginVersion[ ] = "8.0";
 
 // The game sound directory name
 //
@@ -87,6 +87,10 @@ static g_nDifference_CT;
 //
 static g_nSetting;
 
+// Cached for performance
+//
+static bool: g_bSetting;
+
 // Console variable intended to store the plugin version
 //
 static g_nVersion;
@@ -95,7 +99,7 @@ static g_nVersion;
 //
 static g_nTag;
 
-// Cached for performance
+// The plugin talk tag cached for performance
 //
 static g_szTag[ 64 ];
 
@@ -104,24 +108,36 @@ static g_szTag[ 64 ];
 //
 static g_nAuto;
 
-// Convar to allow sorting (with this we allow the game server to transfer the second or the third best player for example),
+// Cached for performance
+//
+static g_nAutoNum;
+
+// Console variable to allow sorting (by using this feature we allow the game server to transfer the second or the third best player for example),
 // in order to transfer the one that is the most appropiate based on their score (frags)
 //
 static g_nSorting;
+
+// Cached for performance
+//
+static g_nSortingNum;
 
 // Console variable to set whether or not to use audio alert when transferring a player
 //
 static g_nAudio;
 
+// Cached for performance
+//
+static g_nAudioNum;
+
 // Console variable to control how the audio alert is sent
 //
 // 0 speak into the transferred player ears only (a teleport like sound effect)
-// 1 that player emits the sound (a teleport like sound effect) globally and other close positioned players are able to hear that too
+// 1 that player emits the sound (a teleport like sound effect) globally and other close positioned players are able to hear that too at a lower volume
 // 2 speak into the transferred player ears only (a man speaking words "YOUR NOW [ T / C T ] FORCE")
 //
 static g_nAudioType;
 
-// Cache for performance
+// Cached for performance
 //
 static g_nAudioTypeNum;
 
@@ -144,13 +160,17 @@ static bool: g_bBotsAreLikeHumans;
 //
 static g_nAnnounceAll;
 
-// Cache for performance
+// Cached for performance
 //
 static g_nAnnounceAllNum;
 
 // Console variable to announce the player on their screen when transferred
 //
 static g_nAnnounce;
+
+// Cached for performance
+//
+static g_nAnnounceNum;
 
 // Console variable to set the transferred player screen announce type
 //
@@ -160,7 +180,7 @@ static g_nAnnounce;
 //
 static g_nAnnounceType;
 
-// Cache for performance
+// Cached for performance
 //
 static g_nAnnounceTypeNum;
 
@@ -208,6 +228,33 @@ static g_nScoring_TE;
 //
 static g_nScoring_CT;
 
+// Variable used to reveal whether or not the actual round has ended, useful if the `CS:DM` extension is disabled
+//
+static bool: g_bCanBalance;
+
+// If enabled, balance only during round end if `CS:DM` is disabled
+//
+static g_nRoundEndOnly;
+
+// Cached for performance
+//
+static bool: g_bRoundEndOnly;
+
+// If enabled, when balancing the teams only during round end while the `CS:DM` extension is disabled or missing,
+// ignore the `team_balancer_frequency` and `team_balancer_bots_delay` console variables and perform everything very quick
+//
+static g_nRoundEndQuick;
+
+// Cached for performance
+//
+static bool: g_bRoundEndQuick;
+
+// Do not respawn if the `CS:DM` extension is missing or disabled
+//
+static g_nNoRespawn;
+
+// Executes after a map starts
+//
 public plugin_init( )
 {
     register_plugin( "Team Balancer by Frags", g_szPluginVersion, "Hattrick (claudiuhks)" );
@@ -240,6 +287,9 @@ public plugin_init( )
     g_nRespawn = register_cvar( "team_balancer_respawn", "1" );
     g_nRespawnType = register_cvar( "team_balancer_respawn_type", "1" );
     g_nRespawnDelay = register_cvar( "team_balancer_respawn_delay", "0.25" );
+    g_nRoundEndOnly = register_cvar( "team_balancer_round_end_only", "1" );
+    g_nRoundEndQuick = register_cvar( "team_balancer_round_end_quick", "1" );
+    g_nNoRespawn = register_cvar( "team_balancer_no_respawn", "1" );
 
     g_nScreenFadeRGBA_TE[ 0 ] = register_cvar( "team_balancer_sf_te_r", "200" ); /// Red
     g_nScreenFadeRGBA_TE[ 1 ] = register_cvar( "team_balancer_sf_te_g", "40" ); /// Green
@@ -251,11 +301,32 @@ public plugin_init( )
     g_nScreenFadeRGBA_CT[ 2 ] = register_cvar( "team_balancer_sf_ct_b", "200" ); /// Blue
     g_nScreenFadeRGBA_CT[ 3 ] = register_cvar( "team_balancer_sf_ct_a", "240" ); /// Alpha
 
-    set_task( 0.25, "Task_Install", 0, "", 0, "", 0 );
+    set_task( 0.25, "T_Install", get_systime( 0 ), "", 0, "", 0 );
 
     g_nCsdmActive = get_cvar_pointer( "csdm_active" );
 
+    register_event( "HLTV", "E_OnRoundLaunch", "a", "1=0", "2=0" );
+    {
+        register_logevent( "LE_OnRoundBegin", 2, "1=Round_Start" );
+        register_logevent( "LE_OnRoundEnd", 2, "1=Round_End" );
+    }
+
     return PLUGIN_CONTINUE;
+}
+
+public E_OnRoundLaunch( )
+{
+    g_bCanBalance = false;
+}
+
+public LE_OnRoundBegin( )
+{
+    g_bCanBalance = false;
+}
+
+public LE_OnRoundEnd( )
+{
+    g_bCanBalance = true;
 }
 
 // Executes before `plugin_init`
@@ -322,21 +393,21 @@ public plugin_natives( )
 
 // Get ready
 //
-public Task_Install( const nTask )
+public T_Install( const nTask )
 {
-    g_fFrequency = floatclamp( get_pcvar_float( g_nFrequency ), 0.25, 60.0 );
+    g_fFrequency = floatmax( get_pcvar_float( g_nFrequency ), 0.2 );
     {
-        set_task( g_fFrequency, "Task_CheckTeams", 0, "", 0, "b", 0 ); // Repeat indefinitely
+        set_task( g_fFrequency, "T_CheckTeams", get_systime( 0 ), "", 0, "b", 0 ); // Repeat indefinitely
     }
 }
 
 // Check the teams
 //
-public Task_CheckTeams( const nTask )
+public T_CheckTeams( const nTask )
 {
     // Data
     //
-    static szName[ 32 ], szFlag[ 2 ], nPlayers_TE[ 32 ], nPlayers_CT[ 32 ], nNum_TE, nNum_CT, nPlayer, Float: fBotsDelay, Float: fDifference, Float: fTime, nUserId;
+    static szName[ 32 ], szFlag[ 2 ], nPlayers_TE[ 32 ], nPlayers_CT[ 32 ], nNum_TE, nNum_CT, nPlayer, Float: fBotsDelay, Float: fTime, nUserId;
 
     // Cache global data for performance
     //
@@ -344,30 +415,85 @@ public Task_CheckTeams( const nTask )
     {
         g_nAnnounceTypeNum = get_pcvar_num( g_nAnnounceType );
         {
-            g_nAudioTypeNum = get_pcvar_num( g_nAudioType );
+            g_nAnnounceNum = get_pcvar_num( g_nAnnounce );
             {
-                g_nAnnounceAllNum = get_pcvar_num( g_nAnnounceAll );
+                g_nAudioTypeNum = get_pcvar_num( g_nAudioType );
                 {
-                    get_pcvar_string( g_nTag, g_szTag, charsmax( g_szTag ) );
+                    g_nAudioNum = get_pcvar_num( g_nAudio );
                     {
-                        get_pcvar_string( g_nFlag, szFlag, charsmax( szFlag ) );
+                        g_nAnnounceAllNum = get_pcvar_num( g_nAnnounceAll );
                         {
-                            g_nFlagNum = read_flags( szFlag );
-                        }
+                            g_bRoundEndQuick = bool: get_pcvar_num( g_nRoundEndQuick );
+                            {
+                                g_bRoundEndOnly = bool: get_pcvar_num( g_nRoundEndOnly );
+                                {
+                                    g_bSetting = bool: get_pcvar_num( g_nSetting );
+                                    {
+                                        g_nAutoNum = get_pcvar_num( g_nAuto );
+                                        {
+                                            g_nSortingNum = get_pcvar_num( g_nSorting );
+                                            {
+                                                get_pcvar_string( g_nTag, g_szTag, charsmax( g_szTag ) );
+                                                {
+                                                    get_pcvar_string( g_nFlag, szFlag, charsmax( szFlag ) );
+                                                    {
+                                                        g_nFlagNum = read_flags( szFlag );
+                                                    }
 
-                        if( g_nCsdmActive > 0 )
-                        {
-                            g_bCsdmActive = get_pcvar_num( g_nCsdmActive ) && module_exists( "csdm" ) && csdm_active( );
-                        }
+                                                    if( g_nCsdmActive > 0 )
+                                                    {
+                                                        g_bCsdmActive = ( get_pcvar_num( g_nCsdmActive ) && module_exists( "csdm" ) && csdm_active( ) );
+                                                    }
 
-                        else
-                        {
-                            g_bCsdmActive = false;
+                                                    else
+                                                    {
+                                                        g_bCsdmActive = false;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
             }
         }
+    }
+
+    if( !g_bCsdmActive )
+    {
+        if( g_bRoundEndQuick )
+        {
+            if( g_bRoundEndOnly )
+            {
+                change_task( nTask, 0.2, 0 );
+            }
+
+            else
+            {
+                change_task( nTask, g_fFrequency, 0 );
+            }
+        }
+
+        else
+        {
+            change_task( nTask, g_fFrequency, 0 );
+        }
+
+        if( !g_bCanBalance )
+        {
+            if( g_bRoundEndOnly )
+            {
+                return PLUGIN_CONTINUE;
+            }
+        }
+    }
+
+    else
+    {
+        change_task( nTask, g_fFrequency, 0 );
     }
 
     // Read terrorist team size in players count excluding hltv proxies
@@ -391,16 +517,22 @@ public Task_CheckTeams( const nTask )
     {
         // Get a terrorist
         //
-        if( !get_pcvar_num( g_nAuto ) )
+        if( !g_nAutoNum )
         {
-            nPlayer = FindPlayerByFrags( bool: get_pcvar_num( g_nSetting ), CS_TEAM_T );
+            nPlayer = FindPlayerByFrags( g_bSetting, CS_TEAM_T );
         }
 
         else
         {
-            if( !get_pcvar_num( g_nSorting ) )
+            if( !g_nSortingNum )
             {
-                nPlayer = FindPlayerByFrags( ( g_nScoring_CT = CheckTeamScoring( CS_TEAM_CT ) ) >= ( g_nScoring_TE = CheckTeamScoring( CS_TEAM_T ) ), CS_TEAM_T );
+                g_nScoring_CT = CheckTeamScoring( CS_TEAM_CT );
+                {
+                    g_nScoring_TE = CheckTeamScoring( CS_TEAM_T );
+                    {
+                        nPlayer = FindPlayerByFrags( g_nScoring_CT >= g_nScoring_TE, CS_TEAM_T );
+                    }
+                }
             }
 
             else
@@ -428,7 +560,7 @@ public Task_CheckTeams( const nTask )
 
         // Should the player be respawned?
         //
-        if( get_pcvar_num( g_nRespawn ) )
+        if( get_pcvar_num( g_nRespawn ) && ( !get_pcvar_num( g_nNoRespawn ) || g_bCsdmActive ) )
         {
             // Should this plugin use `csdm_respawn` if it exists?
             //
@@ -477,7 +609,7 @@ public Task_CheckTeams( const nTask )
                     remove_task( nUserId + ( g_nRandomNumber ), 0 );
                 }
 
-                set_task( floatclamp( get_pcvar_float( g_nRespawnDelay ), 0.0, 4.0 ), "Task_OnceRespawned", nUserId + ( g_nRandomNumber ), "", 0, "", 0 );
+                set_task( floatmax( get_pcvar_float( g_nRespawnDelay ), 0.0 ), "T_OnceRespawned", nUserId + ( g_nRandomNumber ), "", 0, "", 0 );
             }
 
             goto BotsComputation;
@@ -485,7 +617,7 @@ public Task_CheckTeams( const nTask )
 
         // Announce them
         //
-        if( get_pcvar_num( g_nAnnounce ) )
+        if( g_nAnnounceNum )
         {
             if( g_nAnnounceTypeNum == 0 )
             {
@@ -533,7 +665,7 @@ public Task_CheckTeams( const nTask )
 
         // Audio alert them
         //
-        if( get_pcvar_num( g_nAudio ) )
+        if( g_nAudioNum )
         {
             if( g_nAudioTypeNum == 0 )
             {
@@ -566,16 +698,22 @@ public Task_CheckTeams( const nTask )
     {
         // Get a counter terrorist
         //
-        if( !get_pcvar_num( g_nAuto ) )
+        if( !g_nAutoNum )
         {
-            nPlayer = FindPlayerByFrags( bool: get_pcvar_num( g_nSetting ), CS_TEAM_CT );
+            nPlayer = FindPlayerByFrags( g_bSetting, CS_TEAM_CT );
         }
 
         else
         {
-            if( !get_pcvar_num( g_nSorting ) )
+            if( !g_nSortingNum )
             {
-                nPlayer = FindPlayerByFrags( ( g_nScoring_TE = CheckTeamScoring( CS_TEAM_T ) ) >= ( g_nScoring_CT = CheckTeamScoring( CS_TEAM_CT ) ), CS_TEAM_CT );
+                g_nScoring_TE = CheckTeamScoring( CS_TEAM_T );
+                {
+                    g_nScoring_CT = CheckTeamScoring( CS_TEAM_CT );
+                    {
+                        nPlayer = FindPlayerByFrags( g_nScoring_TE >= g_nScoring_CT, CS_TEAM_CT );
+                    }
+                }
             }
 
             else
@@ -603,7 +741,7 @@ public Task_CheckTeams( const nTask )
 
         // Should the player be respawned?
         //
-        if( get_pcvar_num( g_nRespawn ) )
+        if( get_pcvar_num( g_nRespawn ) && ( !get_pcvar_num( g_nNoRespawn ) || g_bCsdmActive ) )
         {
             // Should this plugin use `csdm_respawn` if it exists?
             //
@@ -652,7 +790,7 @@ public Task_CheckTeams( const nTask )
                     remove_task( nUserId + ( g_nRandomNumber ), 0 );
                 }
 
-                set_task( floatclamp( get_pcvar_float( g_nRespawnDelay ), 0.0, 4.0 ), "Task_OnceRespawned", nUserId + ( g_nRandomNumber ), "", 0, "", 0 );
+                set_task( floatmax( get_pcvar_float( g_nRespawnDelay ), 0.0 ), "T_OnceRespawned", nUserId + ( g_nRandomNumber ), "", 0, "", 0 );
             }
 
             goto BotsComputation;
@@ -660,7 +798,7 @@ public Task_CheckTeams( const nTask )
 
         // Announce them
         //
-        if( get_pcvar_num( g_nAnnounce ) )
+        if( g_nAnnounceNum )
         {
             if( g_nAnnounceTypeNum == 0 )
             {
@@ -708,7 +846,7 @@ public Task_CheckTeams( const nTask )
 
         // Audio alert them
         //
-        if( get_pcvar_num( g_nAudio ) )
+        if( g_nAudioNum )
         {
             if( g_nAudioTypeNum == 0 )
             {
@@ -741,27 +879,16 @@ BotsComputation:
 
     if( !g_bBotsAreLikeHumans )
     {
-        fBotsDelay = floatclamp( get_pcvar_float( g_nBotsDelay ), 0.1, 45.0 );
+        fBotsDelay = floatclamp( get_pcvar_float( g_nBotsDelay ), 0.1, g_fFrequency / 2.0 );
         {
-            if( fBotsDelay >= g_fFrequency )
-            {
-                fDifference = fBotsDelay - g_fFrequency;
-                {
-                    fBotsDelay -= fDifference;
-                    {
-                        fBotsDelay -= 0.1;
-                    }
-                }
-            }
+            set_task( ( ( g_bRoundEndQuick && g_bRoundEndOnly && !g_bCsdmActive && g_bCanBalance ) ? ( 0.1 ) : ( fBotsDelay ) ), "T_ManageBots", get_systime( 0 ), "", 0, "", 0 );
         }
-
-        set_task( fBotsDelay, "Task_ManageBots", 0, "", 0, "", 0 );
     }
 
     return PLUGIN_CONTINUE;
 }
 
-public Task_ManageBots( const nTask )
+public T_ManageBots( const nTask )
 {
     static nPlayer, szName[ 32 ], nUserId, Float: fTime;
 
@@ -769,14 +896,14 @@ public Task_ManageBots( const nTask )
     {
         // Get a terrorist bot
         //
-        if( !get_pcvar_num( g_nAuto ) )
+        if( !g_nAutoNum )
         {
-            nPlayer = FindBotByFrags( bool: get_pcvar_num( g_nSetting ), CS_TEAM_T );
+            nPlayer = FindBotByFrags( g_bSetting, CS_TEAM_T );
         }
 
         else
         {
-            if( !get_pcvar_num( g_nSorting ) )
+            if( !g_nSortingNum )
             {
                 nPlayer = FindBotByFrags( ( g_nScoring_CT = CheckTeamScoring( CS_TEAM_CT ) ) >= ( g_nScoring_TE = CheckTeamScoring( CS_TEAM_T ) ), CS_TEAM_T );
             }
@@ -806,7 +933,7 @@ public Task_ManageBots( const nTask )
 
         // Should the player be respawned?
         //
-        if( get_pcvar_num( g_nRespawn ) )
+        if( get_pcvar_num( g_nRespawn ) && ( !get_pcvar_num( g_nNoRespawn ) || g_bCsdmActive ) )
         {
             // Should this plugin use `csdm_respawn` if it exists?
             //
@@ -855,7 +982,7 @@ public Task_ManageBots( const nTask )
                     remove_task( nUserId + ( g_nRandomNumber ), 0 );
                 }
 
-                set_task( floatclamp( get_pcvar_float( g_nRespawnDelay ), 0.0, 4.0 ), "Task_OnceRespawned", nUserId + ( g_nRandomNumber ), "", 0, "", 0 );
+                set_task( floatmax( get_pcvar_float( g_nRespawnDelay ), 0.0 ), "T_OnceRespawned", nUserId + ( g_nRandomNumber ), "", 0, "", 0 );
             }
 
             return PLUGIN_CONTINUE;
@@ -881,7 +1008,7 @@ public Task_ManageBots( const nTask )
 
         // Audio alert them if needed
         //
-        if( get_pcvar_num( g_nAudio ) )
+        if( g_nAudioNum )
         {
             if( g_nAudioTypeNum == 1 )
             {
@@ -897,14 +1024,14 @@ public Task_ManageBots( const nTask )
     {
         // Get a counter terrorist bot
         //
-        if( !get_pcvar_num( g_nAuto ) )
+        if( !g_nAutoNum )
         {
-            nPlayer = FindBotByFrags( bool: get_pcvar_num( g_nSetting ), CS_TEAM_CT );
+            nPlayer = FindBotByFrags( g_bSetting, CS_TEAM_CT );
         }
 
         else
         {
-            if( !get_pcvar_num( g_nSorting ) )
+            if( !g_nSortingNum )
             {
                 nPlayer = FindBotByFrags( ( g_nScoring_TE = CheckTeamScoring( CS_TEAM_T ) ) >= ( g_nScoring_CT = CheckTeamScoring( CS_TEAM_CT ) ), CS_TEAM_CT );
             }
@@ -934,7 +1061,7 @@ public Task_ManageBots( const nTask )
 
         // Should the player be respawned?
         //
-        if( get_pcvar_num( g_nRespawn ) )
+        if( get_pcvar_num( g_nRespawn ) && ( !get_pcvar_num( g_nNoRespawn ) || g_bCsdmActive ) )
         {
             // Should this plugin use `csdm_respawn` if it exists?
             //
@@ -983,7 +1110,7 @@ public Task_ManageBots( const nTask )
                     remove_task( nUserId + ( g_nRandomNumber ), 0 );
                 }
 
-                set_task( floatclamp( get_pcvar_float( g_nRespawnDelay ), 0.0, 4.0 ), "Task_OnceRespawned", nUserId + ( g_nRandomNumber ), "", 0, "", 0 );
+                set_task( floatmax( get_pcvar_float( g_nRespawnDelay ), 0.0 ), "T_OnceRespawned", nUserId + ( g_nRandomNumber ), "", 0, "", 0 );
             }
 
             return PLUGIN_CONTINUE;
@@ -1009,7 +1136,7 @@ public Task_ManageBots( const nTask )
 
         // Audio alert them if needed
         //
-        if( get_pcvar_num( g_nAudio ) )
+        if( g_nAudioNum )
         {
             if( g_nAudioTypeNum == 1 )
             {
@@ -1026,7 +1153,7 @@ public Task_ManageBots( const nTask )
 
 // The player has been respawned right now or a few moments ago because they have been transferred
 //
-public Task_OnceRespawned( const nTask )
+public T_OnceRespawned( const nTask )
 {
     static nPlayer, szName[ 32 ], CsTeams: nTeam;
     {
@@ -1056,7 +1183,7 @@ public Task_OnceRespawned( const nTask )
 
                     // Audio alert them if needed
                     //
-                    if( get_pcvar_num( g_nAudio ) )
+                    if( g_nAudioNum )
                     {
                         if( g_nAudioTypeNum == 1 )
                         {
@@ -1090,7 +1217,7 @@ public Task_OnceRespawned( const nTask )
 
                     // Audio alert them if needed
                     //
-                    if( get_pcvar_num( g_nAudio ) )
+                    if( g_nAudioNum )
                     {
                         if( g_nAudioTypeNum == 1 )
                         {
@@ -1109,7 +1236,7 @@ public Task_OnceRespawned( const nTask )
                 {
                     // Announce them
                     //
-                    if( get_pcvar_num( g_nAnnounce ) )
+                    if( g_nAnnounceNum )
                     {
                         if( g_nAnnounceTypeNum == 0 )
                         {
@@ -1157,7 +1284,7 @@ public Task_OnceRespawned( const nTask )
 
                     // Audio alert them
                     //
-                    if( get_pcvar_num( g_nAudio ) )
+                    if( g_nAudioNum )
                     {
                         if( g_nAudioTypeNum == 0 )
                         {
@@ -1188,7 +1315,7 @@ public Task_OnceRespawned( const nTask )
                 {
                     // Announce them
                     //
-                    if( get_pcvar_num( g_nAnnounce ) )
+                    if( g_nAnnounceNum )
                     {
                         if( g_nAnnounceTypeNum == 0 )
                         {
@@ -1236,7 +1363,7 @@ public Task_OnceRespawned( const nTask )
 
                     // Audio alert them
                     //
-                    if( get_pcvar_num( g_nAudio ) )
+                    if( g_nAudioNum )
                     {
                         if( g_nAudioTypeNum == 0 )
                         {
@@ -1570,23 +1697,23 @@ static PerformPlayerScreenFade( const nPlayer, const CsTeams: nTeam )
 // nIndex
 // ------
 //
-// 33 ('\x03' is grey)
-// 34 ('\x03' is red)
-// 35 ('\x03' is blue)
+// If `nIndex` is 33 => ('\x03' is grey)
+// If `nIndex` is 34 => ('\x03' is red)
+// If `nIndex` is 35 => ('\x03' is blue)
 //
-// 1 - 32 ('\x03' is their team color)
+// If `nIndex` is % any other value % => ('\x03' is their team color)
 //
 static sendSayText( const nPlayer, const nIndex, const szIn[ ], const any: ... )
 {
-    static szMsg[ 256 ], nPlayers[ 32 ], nNum, nIter;
+    static szMsg[ 256 ], nPlayers[ 32 ], nNum, nIter, nTo;
     {
-        vformat( szMsg, charsmax( szMsg ), szIn, 4 );
+        if( vformat( szMsg, charsmax( szMsg ), szIn, 4 ) > 0 )
         {
             if( nPlayer > 0 )
             {
                 message_begin( MSG_ONE_UNRELIABLE, g_nSayTextMsg, { 0, 0, 0 } /** Message origin */, nPlayer );
                 {
-                    write_byte( nIndex );
+                    write_byte( ( ( ( nIndex > 32 ) && ( nIndex < 36 ) ) ? ( nIndex ) : ( nPlayer ) ) );
                     {
                         write_string( szMsg );
                     }
@@ -1602,14 +1729,17 @@ static sendSayText( const nPlayer, const nIndex, const szIn[ ], const any: ... )
                     {
                         for( nIter = 0; nIter < nNum; nIter++ )
                         {
-                            message_begin( MSG_ONE_UNRELIABLE, g_nSayTextMsg, { 0, 0, 0 } /** Message origin */, nPlayers[ nIter ] );
+                            nTo = nPlayers[ nIter ];
                             {
-                                write_byte( nIndex );
+                                message_begin( MSG_ONE_UNRELIABLE, g_nSayTextMsg, { 0, 0, 0 } /** Message origin */, nTo );
                                 {
-                                    write_string( szMsg );
+                                    write_byte( ( ( ( nIndex > 32 ) && ( nIndex < 36 ) ) ? ( nIndex ) : ( nTo ) ) );
+                                    {
+                                        write_string( szMsg );
+                                    }
                                 }
+                                message_end( );
                             }
-                            message_end( );
                         }
                     }
                 }

@@ -12,24 +12,94 @@
 /*** ----------------------------------------------------------------------------------------------------------------------- ***/
 
 #include < amxmodx > // register_cvar, ...
-#include < cstrike > // cs_set_user_team, ...
+
+#include < cstrike > // cs_set_user_team, ... /* If you are not running `CS:DM` you can avoid the use of the `CSTRIKE` module by commenting this line */
+#include < hamsandwich > // RegisterHam, ... /* If you are running `CS:DM` you can avoid the use of the `HAMSANDWICH` module by commenting this line */
+
+// Use the `FAKEMETA` module if the `CSTRIKE` module is excluded by the user
+//
+#if !defined _cstrike_included
+
+#include < fakemeta > // set_pdata_int, ...
+
+#endif
 
 /*** ----------------------------------------------------------------------------------------------------------------------- ***/
 
-native dllfunc( const nType, const any: ... ); /** Optional */ /// The game server does not need to have this function [ FAKEMETA MODULE ]
+// If the `FAKEMETA` module isn't included
+//
+#if !defined _fakemeta_included
 
-native spawn( const nEntity ); /** Optional */ /// The game server does not need to have this function [ FUN MODULE ]
+native dllfunc( const nType, const any: ... ); /* Optional */ // The game server does not need to have this function [ `FAKEMETA` module ]
 
-native bool: csdm_active( ); /** Optional */ /// The game server does not need to have this function [ CSDM MODULE ]
-native Float: csdm_get_spawnwait( ); /** Optional */ /// The game server does not need to have this function [ CSDM MODULE ]
-native csdm_set_spawnwait( const Float: fTime ); /** Optional */ /// The game server does not need to have this function [ CSDM MODULE ]
-native csdm_respawn( const nPlayer ); /** Optional */ /// The game server does not need to have this function [ CSDM MODULE ]
+#endif
+
+// If the `FUN` module isn't included
+//
+#if !defined _fun_included
+
+native spawn( const nEntity ); /* Optional */ // The game server does not need to have this function [ `FUN` module ]
+
+#endif
+
+// If the `CSTRIKE` module isn't included
+//
+#if !defined _cstrike_included
+
+native cs_user_spawn( const nPlayer ); /* Optional */ // The game server does not need to have this function [ `CSTRIKE` module ]
+
+#endif
+
+// If the `CS:DM` module isn't included
+//
+#if !defined _csdm_included
+
+native bool: csdm_active( ); /* Optional */ // The game server does not need to have this function [ `CS:DM` module ]
+native Float: csdm_get_spawnwait( ); /* Optional */ // The game server does not need to have this function [ `CS:DM` module ]
+native csdm_set_spawnwait( const Float: fTime ); /* Optional */ // The game server does not need to have this function [ `CS:DM` module ]
+native csdm_respawn( const nPlayer ); /* Optional */ // The game server does not need to have this function [ `CS:DM` module ]
+
+#endif
+
+/*** ----------------------------------------------------------------------------------------------------------------------- ***/
+
+// If the `CSTRIKE` module isn't included
+//
+#if !defined _cstrike_included
+
+#if !defined CsTeams
+
+#if !defined CS_TEAM_UNASSIGNED
+
+// CS/ CZ teams
+//
+enum CsTeams
+{
+    CS_TEAM_UNASSIGNED = 0,
+    CS_TEAM_T = 1,
+    CS_TEAM_CT = 2,
+    CS_TEAM_SPECTATOR = 3,
+};
+
+#endif
+
+#endif
+
+// `get_pdata_int` as `cs_get_user_team`
+//
+#define cs_get_user_team(%0) CsTeams: get_pdata_int( %0, 114 /* CS/ CZ team member offset */ )
+
+// `set_pdata_int` as `cs_set_user_team`
+//
+#define cs_set_user_team(%0,%1) set_pdata_int( %0, 114 /* CS/ CZ team member offset */, any: %1 )
+
+#endif
 
 /*** ----------------------------------------------------------------------------------------------------------------------- ***/
 
 // The plugin version
 //
-static const g_szPluginVersion[ ] = "8.0";
+static const g_szPluginVersion[ ] = "8.1";
 
 // The game sound directory name
 //
@@ -38,10 +108,6 @@ static const g_szSoundDirectoryName[ ] = "sound";
 // The wave audio file path (optional to be uploaded to the game server & then downloaded by the players)
 //
 static const g_szWaveAudioFilePath[ ] = "team_balancer_by_frags/transfer.wav";
-
-// This is a negative number which represents a player that is not valid
-//
-static const g_nInvalidPlayer = -1;
 
 // A random number
 //
@@ -60,10 +126,6 @@ static bool: g_bCsdmActive;
 // Console variable to set the checking frequency in seconds
 //
 static g_nFrequency;
-
-// Frequency value globally cached
-//
-static Float: g_fFrequency;
 
 // Console variable to allow bots computation delay after humans are computed to avoid chat spamming (humans are computed first)
 //
@@ -101,11 +163,11 @@ static bool: g_bSetting;
 //
 static g_nVersion;
 
-// The plugin talk tag
+// The plugin chat (talk) tag
 //
 static g_nTag;
 
-// The plugin talk tag cached for performance
+// The plugin chat (talk) tag cached for performance
 //
 static g_szTag[ 64 ];
 
@@ -259,12 +321,75 @@ static bool: g_bRoundEndQuick;
 //
 static g_nNoRespawn;
 
+// If the `HAMSANDWICH` module is included
+//
+#if defined _hamsandwich_included
+
+// Whether or not the players can kill each other if they are enemies
+//
+static bool: g_bAreThePlayersImmune;
+
+// The player is taking damage
+//
+static HamHook: g_eOnTakeDamage;
+
+// The player is being attacked
+//
+static HamHook: g_eOnTraceAttack;
+
+// Check whether or not the script is compiled with a recent AMX Mod X edition
+//
+#if defined amxclient_cmd && defined RegisterHamPlayer
+
+// On recent AMX Mod X editions, CS/ CZ original bots are already registered
+//
+
+#else // defined amxclient_cmd && defined RegisterHamPlayer
+
+// Whether or not the CS/ CZ original bots are registered
+//
+static bool: g_bAreTheFakePlayersRegistered;
+
+// The fake player is taking damage
+//
+static HamHook: g_eOnTakeDamage_BOTS;
+
+// The fake player is being attacked
+//
+static HamHook: g_eOnTraceAttack_BOTS;
+
+// `bot_quota` console variable index
+//
+static g_nQuota;
+
+#endif
+
+#endif
+
+// Console variable to also allow the transfer of alive players in game servers which are not `CS:DM` or are `CS:DM` but `csdm_active` disabled
+//
+static g_nAlsoTransferAlive;
+
+// Maximum players the game server can handle
+//
+static g_nMaximumPlayers;
+
+// Do not execute two bot transfers consecutively
+//
+static bool: g_bHaveManagedTheBots;
+
+// Round start time
+//
+static Float: g_fRoundStartTime;
+
 // Executes after a map starts
 //
 public plugin_init( )
 {
     register_plugin( "Team Balancer by Frags", g_szPluginVersion, "Hattrick (claudiuhks)" );
     {
+        // Register the version console variable
+        //
         g_nVersion = register_cvar( "team_balancer_by_frags", g_szPluginVersion, FCVAR_SERVER | FCVAR_UNLOGGED | FCVAR_EXTDLL );
     }
 
@@ -292,20 +417,19 @@ public plugin_init( )
     g_nRoundEndOnly = register_cvar( "team_balancer_round_end_only", "1" );
     g_nRoundEndQuick = register_cvar( "team_balancer_round_end_quick", "1" );
     g_nNoRespawn = register_cvar( "team_balancer_no_respawn", "1" );
+    g_nAlsoTransferAlive = register_cvar( "team_balancer_transfer_alive", "1" );
 
-    g_nScreenFadeRGBA_TE[ 0 ] = register_cvar( "team_balancer_sf_te_r", "200" ); /// Red
-    g_nScreenFadeRGBA_TE[ 1 ] = register_cvar( "team_balancer_sf_te_g", "40" ); /// Green
-    g_nScreenFadeRGBA_TE[ 2 ] = register_cvar( "team_balancer_sf_te_b", "0" ); /// Blue
-    g_nScreenFadeRGBA_TE[ 3 ] = register_cvar( "team_balancer_sf_te_a", "240" ); /// Alpha
+    g_nScreenFadeRGBA_TE[ 0 ] = register_cvar( "team_balancer_sf_te_r", "200" ); // Red
+    g_nScreenFadeRGBA_TE[ 1 ] = register_cvar( "team_balancer_sf_te_g", "40" ); // Green
+    g_nScreenFadeRGBA_TE[ 2 ] = register_cvar( "team_balancer_sf_te_b", "0" ); // Blue
+    g_nScreenFadeRGBA_TE[ 3 ] = register_cvar( "team_balancer_sf_te_a", "240" ); // Alpha
 
-    g_nScreenFadeRGBA_CT[ 0 ] = register_cvar( "team_balancer_sf_ct_r", "0" ); /// Red
-    g_nScreenFadeRGBA_CT[ 1 ] = register_cvar( "team_balancer_sf_ct_g", "40" ); /// Green
-    g_nScreenFadeRGBA_CT[ 2 ] = register_cvar( "team_balancer_sf_ct_b", "200" ); /// Blue
-    g_nScreenFadeRGBA_CT[ 3 ] = register_cvar( "team_balancer_sf_ct_a", "240" ); /// Alpha
+    g_nScreenFadeRGBA_CT[ 0 ] = register_cvar( "team_balancer_sf_ct_r", "0" ); // Red
+    g_nScreenFadeRGBA_CT[ 1 ] = register_cvar( "team_balancer_sf_ct_g", "40" ); // Green
+    g_nScreenFadeRGBA_CT[ 2 ] = register_cvar( "team_balancer_sf_ct_b", "200" ); // Blue
+    g_nScreenFadeRGBA_CT[ 3 ] = register_cvar( "team_balancer_sf_ct_a", "240" ); // Alpha
 
     set_task( 0.25, "T_Install", get_systime( 0 ) );
-
-    g_nCsdmActive = get_cvar_pointer( "csdm_active" );
 
     register_event( "HLTV", "E_OnRoundLaunch", "a", "1=0", "2=0" );
     {
@@ -321,6 +445,70 @@ public E_OnRoundLaunch( const nValue )
 {
     g_bCanBalance = false;
 
+    g_fRoundStartTime = get_gametime( );
+
+// If the `HAMSANDWICH` module is included
+//
+#if defined _hamsandwich_included
+
+#if defined DisableHamForward
+
+    DisableHamForward( g_eOnTakeDamage );
+    DisableHamForward( g_eOnTraceAttack );
+
+// Check whether or not the script is compiled with a recent AMX Mod X edition
+//
+#if defined amxclient_cmd && defined RegisterHamPlayer
+
+    // On recent AMX Mod X editions, CS/ CZ original bots are already registered
+    //
+
+#else // defined amxclient_cmd && defined RegisterHamPlayer
+
+    if( g_bAreTheFakePlayersRegistered )
+    {
+        DisableHamForward( g_eOnTakeDamage_BOTS );
+        DisableHamForward( g_eOnTraceAttack_BOTS );
+    }
+
+#endif
+
+#endif
+
+    g_bAreThePlayersImmune = false;
+
+#endif
+
+    return PLUGIN_CONTINUE;
+}
+
+// Can start balancing the teams now at the end of the round (after 1.6 seconds the round has ended)
+//
+public T_RunBalancing( const nTask )
+{
+    // A protection to not balance the teams during the round
+    //
+    if( g_fRoundStartTime > 0.0 )
+    {
+        if( ( get_gametime( ) - g_fRoundStartTime ) < 2.0 )
+        {
+            g_bCanBalance = false;
+
+            return PLUGIN_CONTINUE;
+        }
+    }
+
+    // Do not start balancing if there were no new rounds at all
+    //
+    else
+    {
+        g_bCanBalance = false;
+
+        return PLUGIN_CONTINUE;
+    }
+
+    g_bCanBalance = true;
+
     return PLUGIN_CONTINUE;
 }
 
@@ -328,13 +516,120 @@ public E_OnRoundLaunch( const nValue )
 //
 public LE_OnRoundEnd( )
 {
-    g_bCanBalance = true;
+    static nSysTime;
+
+    nSysTime = get_systime( 0 );
     {
-        set_task( 3.9, "T_StopBalancing", get_systime( 0 ) );
+        set_task( 1.6, "T_RunBalancing", nSysTime );
+        {
+            set_task( 3.9, "T_StopBalancing", nSysTime );
+        }
     }
+
+// If the `HAMSANDWICH` module is included
+//
+#if defined _hamsandwich_included
+
+#if defined EnableHamForward
+
+    EnableHamForward( g_eOnTakeDamage );
+    EnableHamForward( g_eOnTraceAttack );
+
+// Check whether or not the script is compiled with a recent AMX Mod X edition
+//
+#if defined amxclient_cmd && defined RegisterHamPlayer
+
+    // On recent AMX Mod X editions, CS/ CZ original bots are already registered
+    //
+
+#else // defined amxclient_cmd && defined RegisterHamPlayer
+
+    if( g_bAreTheFakePlayersRegistered )
+    {
+        EnableHamForward( g_eOnTakeDamage_BOTS );
+        EnableHamForward( g_eOnTraceAttack_BOTS );
+    }
+
+#endif
+
+#endif
+
+    g_bAreThePlayersImmune = true;
+
+#endif
 
     return PLUGIN_CONTINUE;
 }
+
+// If the `HAMSANDWICH` module is included
+//
+#if defined _hamsandwich_included
+
+// The player or the fake player is taking damage
+//
+public OnPlayerTakeDamage_PRE( const nPlayer, const nInflictor, const nAttacker, const Float: fDamage, const nDamageType )
+{
+    if( !g_bAreThePlayersImmune )
+    {
+        return HAM_IGNORED;
+    }
+
+    if( nAttacker < 1 )
+    {
+        return HAM_IGNORED;
+    }
+
+    if( nAttacker > g_nMaximumPlayers )
+    {
+        return HAM_IGNORED;
+    }
+
+    if( nAttacker == nPlayer )
+    {
+        return HAM_IGNORED;
+    }
+
+    if( cs_get_user_team( nPlayer ) == cs_get_user_team( nAttacker ) )
+    {
+        return HAM_IGNORED;
+    }
+
+    return HAM_SUPERCEDE;
+}
+
+// The player or the fake player is being attacked
+//
+public OnPlayerTraceAttack_PRE( const nPlayer, const nAttacker, const Float: fDamage, const Float: pfVelocity[3], const nTrace, const nDamageType )
+{
+    if( !g_bAreThePlayersImmune )
+    {
+        return HAM_IGNORED;
+    }
+
+    if( nAttacker < 1 )
+    {
+        return HAM_IGNORED;
+    }
+
+    if( nAttacker > g_nMaximumPlayers )
+    {
+        return HAM_IGNORED;
+    }
+
+    if( nAttacker == nPlayer )
+    {
+        return HAM_IGNORED;
+    }
+
+    if( cs_get_user_team( nPlayer ) == cs_get_user_team( nAttacker ) )
+    {
+        return HAM_IGNORED;
+    }
+
+    return HAM_SUPERCEDE;
+}
+
+#endif
 
 // Executes before `plugin_init`
 //
@@ -365,6 +660,39 @@ public plugin_cfg( )
     g_nScreenFadeMsg = get_user_msgid( "ScreenFade" );
     g_nSayTextMsg = get_user_msgid( "SayText" );
 
+    g_nCsdmActive = get_cvar_pointer( "csdm_active" );
+
+    g_nMaximumPlayers = get_maxplayers( );
+
+// If the `HAMSANDWICH` module is included
+//
+#if defined _hamsandwich_included
+
+// Check whether or not the script is compiled with a recent AMX Mod X edition
+//
+#if defined amxclient_cmd && defined RegisterHamPlayer
+
+    g_eOnTakeDamage = RegisterHam( Ham_TakeDamage, "player", "OnPlayerTakeDamage_PRE", 0, true );
+    g_eOnTraceAttack = RegisterHam( Ham_TraceAttack, "player", "OnPlayerTraceAttack_PRE", 0, true );
+
+#else // defined amxclient_cmd && defined RegisterHamPlayer
+
+    g_eOnTakeDamage = RegisterHam( Ham_TakeDamage, "player", "OnPlayerTakeDamage_PRE" );
+    g_eOnTraceAttack = RegisterHam( Ham_TraceAttack, "player", "OnPlayerTraceAttack_PRE" );
+
+    g_nQuota = get_cvar_pointer( "bot_quota" );
+
+#endif
+
+#if defined DisableHamForward
+
+    DisableHamForward( g_eOnTakeDamage );
+    DisableHamForward( g_eOnTraceAttack );
+
+#endif
+
+#endif
+
     if( g_nVersion > 0 )
     {
         set_pcvar_string( g_nVersion, g_szPluginVersion );
@@ -372,6 +700,180 @@ public plugin_cfg( )
 
     return PLUGIN_CONTINUE;
 }
+
+// If the `HAMSANDWICH` module is included
+//
+#if defined _hamsandwich_included
+
+// Check whether or not the script is compiled with a recent AMX Mod X edition
+//
+#if defined amxclient_cmd && defined RegisterHamPlayer
+
+// On recent AMX Mod X editions, CS/ CZ original bots are already registered
+//
+
+#else // defined amxclient_cmd && defined RegisterHamPlayer
+
+// The player connects
+//
+public client_connect( nPlayer )
+{
+    static nThePlayerUserIndex;
+
+    if( g_bAreTheFakePlayersRegistered )
+    {
+        return PLUGIN_CONTINUE;
+    }
+
+    if( 1 > g_nQuota )
+    {
+        return PLUGIN_CONTINUE;
+    }
+
+    if( nPlayer < 1 )
+    {
+        return PLUGIN_CONTINUE;
+    }
+
+    if( nPlayer > g_nMaximumPlayers )
+    {
+        return PLUGIN_CONTINUE;
+    }
+
+    if( 1 > get_pcvar_num( g_nQuota ) )
+    {
+        return PLUGIN_CONTINUE;
+    }
+
+    if( is_user_hltv( nPlayer ) )
+    {
+        return PLUGIN_CONTINUE;
+    }
+
+    if( !is_user_bot( nPlayer ) )
+    {
+        return PLUGIN_CONTINUE;
+    }
+
+    nThePlayerUserIndex = get_user_userid( nPlayer );
+
+    if( nThePlayerUserIndex < 0 )
+    {
+        return PLUGIN_CONTINUE;
+    }
+
+    set_task( 0.0, "RegisterHamForTheFakePlayer", nThePlayerUserIndex );
+
+    return PLUGIN_CONTINUE;
+}
+
+public RegisterHamForTheFakePlayer( const nTheTaskIndexAsThePlayerUserId )
+{
+    static nTheFakePlayer;
+
+    if( g_bAreTheFakePlayersRegistered )
+    {
+        return PLUGIN_CONTINUE;
+    }
+
+    if( nTheTaskIndexAsThePlayerUserId < 0 )
+    {
+        return PLUGIN_CONTINUE;
+    }
+
+#if defined FindPlayer_IncludeConnecting
+
+    nTheFakePlayer = find_player_ex( FindPlayer_MatchUserId | FindPlayer_IncludeConnecting, nTheTaskIndexAsThePlayerUserId );
+
+#else // defined FindPlayer_IncludeConnecting
+
+    nTheFakePlayer = RetrievePlayerIdByPlayerUserId( nTheTaskIndexAsThePlayerUserId );
+
+#endif
+
+    if( nTheFakePlayer < 1 )
+    {
+        return PLUGIN_CONTINUE;
+    }
+
+    if( nTheFakePlayer > g_nMaximumPlayers )
+    {
+        return PLUGIN_CONTINUE;
+    }
+
+    if( !is_user_connected( nTheFakePlayer ) )
+    {
+
+#if defined is_user_connecting
+
+        if( !is_user_connecting( nTheFakePlayer ) )
+        {
+            return PLUGIN_CONTINUE;
+        }
+
+#else // defined is_user_connecting
+
+        return PLUGIN_CONTINUE;
+
+#endif
+
+    }
+
+    if( is_user_hltv( nTheFakePlayer ) )
+    {
+        return PLUGIN_CONTINUE;
+    }
+
+    if( !is_user_bot( nTheFakePlayer ) )
+    {
+        return PLUGIN_CONTINUE;
+    }
+
+    g_eOnTakeDamage_BOTS = RegisterHamFromEntity( Ham_TakeDamage, nTheFakePlayer, "OnPlayerTakeDamage_PRE" );
+    g_eOnTraceAttack_BOTS = RegisterHamFromEntity( Ham_TraceAttack, nTheFakePlayer, "OnPlayerTraceAttack_PRE" );
+
+#if defined DisableHamForward
+
+    if( !g_bAreThePlayersImmune )
+    {
+        DisableHamForward( g_eOnTakeDamage_BOTS );
+        DisableHamForward( g_eOnTraceAttack_BOTS );
+    }
+
+#endif
+
+    g_bAreTheFakePlayersRegistered = true;
+
+    return PLUGIN_CONTINUE;
+}
+
+#if !defined FindPlayer_IncludeConnecting
+
+static RetrievePlayerIdByPlayerUserId( const &nThePlayerUserIndex )
+{
+    static nPlayer;
+
+    if( nThePlayerUserIndex < 0 )
+    {
+        return 0;
+    }
+
+    for( nPlayer = 1; nPlayer <= g_nMaximumPlayers; nPlayer++ )
+    {
+        if( nThePlayerUserIndex == get_user_userid( nPlayer ) )
+        {
+            return nPlayer;
+        }
+    }
+
+    return 0;
+}
+
+#endif
+
+#endif
+
+#endif
 
 // When a native is being computed
 //
@@ -381,14 +883,15 @@ public F_Natives( const szNative[ ], const nNative, const bool: bFound )
     //
     if( !bFound )
     {
-        if( strcmp( szNative, "dllfunc", true ) == 0 || /** FAKEMETA */
-            strcmp( szNative, "spawn", true ) == 0 || /** FUN */
-            strcmp( szNative, "csdm_respawn", true ) == 0 || /** CSDM */
-            strcmp( szNative, "csdm_active", true ) == 0 || /** CSDM */
-            strcmp( szNative, "csdm_get_spawnwait", true ) == 0 || /** CSDM */
-            strcmp( szNative, "csdm_set_spawnwait", true ) == 0 ) /** CSDM */
+        if( strcmp( szNative, "dllfunc", true ) == 0 || /* FAKEMETA module */
+            strcmp( szNative, "spawn", true ) == 0 || /* FUN module */
+            strcmp( szNative, "cs_user_spawn", true ) == 0 || /* CSTRIKE module */
+            strcmp( szNative, "csdm_respawn", true ) == 0 || /* CS:DM module */
+            strcmp( szNative, "csdm_active", true ) == 0 || /* CS:DM module */
+            strcmp( szNative, "csdm_get_spawnwait", true ) == 0 || /* CS:DM module */
+            strcmp( szNative, "csdm_set_spawnwait", true ) == 0 ) /* CS:DM module */
         {
-            return PLUGIN_HANDLED; /** I understand that for some reason this native does not exist on the game server so don't throw any error to the logging system */
+            return PLUGIN_HANDLED; /* I understand that for some reason this native does not exist on the game server so don't throw any error to the logging system */
         }
     }
 
@@ -417,10 +920,7 @@ public T_StopBalancing( const nTask )
 //
 public T_Install( const nTask )
 {
-    g_fFrequency = floatmax( get_pcvar_float( g_nFrequency ), 0.2 );
-    {
-        set_task( g_fFrequency, "T_CheckTeams", get_systime( 0 ), "", 0, "b" ); // Repeat indefinitely
-    }
+    set_task( get_pcvar_float( g_nFrequency ), "T_CheckTeams", get_systime( 0 ), "", 0, "b" ); // Repeat indefinitely
 
     return PLUGIN_CONTINUE;
 }
@@ -431,7 +931,11 @@ public T_CheckTeams( const nTask )
 {
     // Data
     //
-    static szName[ 32 ], szFlag[ 2 ], nPlayers_TE[ 32 ], nPlayers_CT[ 32 ], nNum_TE, nNum_CT, nPlayer, Float: fBotsDelay, Float: fTime, nUserId;
+    static szName[ 32 ], szFlag[ 2 ], pnPlayers_TE[ 32 ], pnPlayers_CT[ 32 ], nNum_TE, nNum_CT, nPlayer, Float: fTime, nUserId;
+
+    // Erase the bots management stamp, managing humans now
+    //
+    g_bHaveManagedTheBots = false;
 
     // Cache global data for performance
     //
@@ -494,18 +998,18 @@ public T_CheckTeams( const nTask )
             {
                 // Perform the transfers very quick
                 //
-                change_task( nTask, 0.2 );
+                change_task( nTask, 0.1 );
             }
 
             else
             {
-                change_task( nTask, g_fFrequency );
+                change_task( nTask, get_pcvar_float( g_nFrequency ) );
             }
         }
 
         else
         {
-            change_task( nTask, g_fFrequency );
+            change_task( nTask, get_pcvar_float( g_nFrequency ) );
         }
 
         if( !g_bCanBalance )
@@ -519,16 +1023,16 @@ public T_CheckTeams( const nTask )
 
     else
     {
-        change_task( nTask, g_fFrequency );
+        change_task( nTask, get_pcvar_float( g_nFrequency ) );
     }
 
     // Read terrorist team size in players count excluding hltv proxies
     //
-    get_players( nPlayers_TE, nNum_TE, "eh", "TERRORIST" );
+    get_players_custom( pnPlayers_TE, nNum_TE, "eh", CS_TEAM_T );
 
     // Read counter terrorist team size in players count excluding hltv proxies
     //
-    get_players( nPlayers_CT, nNum_CT, "eh", "CT" );
+    get_players_custom( pnPlayers_CT, nNum_CT, "eh", CS_TEAM_CT );
 
     // Check whether the teams should be balanced
     //
@@ -575,7 +1079,7 @@ public T_CheckTeams( const nTask )
 
         // Is this specified selected player a valid one?
         //
-        if( nPlayer == g_nInvalidPlayer )
+        if( nPlayer < 1 || nPlayer > g_nMaximumPlayers )
         {
             goto BotsComputation;
         }
@@ -619,12 +1123,15 @@ public T_CheckTeams( const nTask )
 
                 else if( module_exists( "fakemeta" ) )
                 {
-                    dllfunc( 1 /** DLLFunc_Spawn */, nPlayer );
+                    dllfunc( 1 /* DLLFunc_Spawn */, nPlayer );
                 }
 
                 else if( !is_user_alive( nPlayer ) )
                 {
-                    cs_user_spawn( nPlayer );
+                    if( module_exists( "cstrike" ) )
+                    {
+                        cs_user_spawn( nPlayer );
+                    }
                 }
             }
 
@@ -635,7 +1142,7 @@ public T_CheckTeams( const nTask )
                     remove_task( nUserId + ( g_nRandomNumber ) );
                 }
 
-                set_task( floatmax( get_pcvar_float( g_nRespawnDelay ), 0.0 ), "T_OnceRespawned", nUserId + ( g_nRandomNumber ) );
+                set_task( get_pcvar_float( g_nRespawnDelay ), "T_OnceRespawned", nUserId + ( g_nRandomNumber ) );
             }
 
             goto BotsComputation;
@@ -657,7 +1164,7 @@ public T_CheckTeams( const nTask )
 
             else
             {
-                sendSayText( nPlayer, 35 /** \x03 is blue */, "\x04%s\x01 You've joined the\x03 Counter-Terrorists", g_szTag );
+                sendSayText( nPlayer, 35 /* \x03 is blue */, "\x04%s\x01 You've joined the\x03 Counter-Terrorists", g_szTag );
             }
         }
 
@@ -674,7 +1181,7 @@ public T_CheckTeams( const nTask )
 
                 else
                 {
-                    sendSayText( 0, 35 /** \x03 is blue */, "\x04%s\x03 %s\x01 joined the\x03 Counter-Terrorists", g_szTag, szName );
+                    sendSayText( 0, 35 /* \x03 is blue */, "\x04%s\x03 %s\x01 joined the\x03 Counter-Terrorists", g_szTag, szName );
                 }
             }
         }
@@ -756,7 +1263,7 @@ public T_CheckTeams( const nTask )
 
         // Is this specified selected player a valid one?
         //
-        if( nPlayer == g_nInvalidPlayer )
+        if( nPlayer < 1 || nPlayer > g_nMaximumPlayers )
         {
             goto BotsComputation;
         }
@@ -800,12 +1307,15 @@ public T_CheckTeams( const nTask )
 
                 else if( module_exists( "fakemeta" ) )
                 {
-                    dllfunc( 1 /** DLLFunc_Spawn */, nPlayer );
+                    dllfunc( 1 /* DLLFunc_Spawn */, nPlayer );
                 }
 
                 else if( !is_user_alive( nPlayer ) )
                 {
-                    cs_user_spawn( nPlayer );
+                    if( module_exists( "cstrike" ) )
+                    {
+                        cs_user_spawn( nPlayer );
+                    }
                 }
             }
 
@@ -816,7 +1326,7 @@ public T_CheckTeams( const nTask )
                     remove_task( nUserId + ( g_nRandomNumber ) );
                 }
 
-                set_task( floatmax( get_pcvar_float( g_nRespawnDelay ), 0.0 ), "T_OnceRespawned", nUserId + ( g_nRandomNumber ) );
+                set_task( get_pcvar_float( g_nRespawnDelay ), "T_OnceRespawned", nUserId + ( g_nRandomNumber ) );
             }
 
             goto BotsComputation;
@@ -838,7 +1348,7 @@ public T_CheckTeams( const nTask )
 
             else
             {
-                sendSayText( nPlayer, 34 /** \x03 is red */, "\x04%s\x01 You've joined the\x03 Terrorists", g_szTag );
+                sendSayText( nPlayer, 34 /* \x03 is red */, "\x04%s\x01 You've joined the\x03 Terrorists", g_szTag );
             }
         }
 
@@ -855,7 +1365,7 @@ public T_CheckTeams( const nTask )
 
                 else
                 {
-                    sendSayText( 0, 34 /** \x03 is red */, "\x04%s\x03 %s\x01 joined the\x03 Terrorists", g_szTag, szName );
+                    sendSayText( 0, 34 /* \x03 is red */, "\x04%s\x03 %s\x01 joined the\x03 Terrorists", g_szTag, szName );
                 }
             }
         }
@@ -905,10 +1415,7 @@ BotsComputation:
 
     if( !g_bBotsAreLikeHumans )
     {
-        fBotsDelay = floatclamp( get_pcvar_float( g_nBotsDelay ), 0.1, g_fFrequency / 2.0 );
-        {
-            set_task( ( ( g_bRoundEndQuick && g_bRoundEndOnly && !g_bCsdmActive && g_bCanBalance ) ? ( 0.1 ) : ( fBotsDelay ) ), "T_ManageBots", get_systime( 0 ) );
-        }
+        set_task( ( ( g_bRoundEndQuick && g_bRoundEndOnly && !g_bCsdmActive && g_bCanBalance ) ? ( 0.1 ) : ( get_pcvar_float( g_nBotsDelay ) ) ), "T_ManageBots", get_systime( 0 ) );
     }
 
     return PLUGIN_CONTINUE;
@@ -917,6 +1424,13 @@ BotsComputation:
 public T_ManageBots( const nTask )
 {
     static nPlayer, szName[ 32 ], nUserId, Float: fTime;
+
+    if( g_bHaveManagedTheBots )
+    {
+        return PLUGIN_CONTINUE;
+    }
+
+    g_bHaveManagedTheBots = true;
 
     if( ( BotsNum( CS_TEAM_T ) - BotsNum( CS_TEAM_CT ) ) > max( 1, get_pcvar_num( g_nDifference_TE ) ) )
     {
@@ -948,7 +1462,7 @@ public T_ManageBots( const nTask )
 
         // Is this specified selected bot a valid one?
         //
-        if( nPlayer == g_nInvalidPlayer )
+        if( nPlayer < 1 || nPlayer > g_nMaximumPlayers )
         {
             return PLUGIN_CONTINUE;
         }
@@ -992,12 +1506,15 @@ public T_ManageBots( const nTask )
 
                 else if( module_exists( "fakemeta" ) )
                 {
-                    dllfunc( 1 /** DLLFunc_Spawn */, nPlayer );
+                    dllfunc( 1 /* DLLFunc_Spawn */, nPlayer );
                 }
 
                 else if( !is_user_alive( nPlayer ) )
                 {
-                    cs_user_spawn( nPlayer );
+                    if( module_exists( "cstrike" ) )
+                    {
+                        cs_user_spawn( nPlayer );
+                    }
                 }
             }
 
@@ -1008,7 +1525,7 @@ public T_ManageBots( const nTask )
                     remove_task( nUserId + ( g_nRandomNumber ) );
                 }
 
-                set_task( floatmax( get_pcvar_float( g_nRespawnDelay ), 0.0 ), "T_OnceRespawned", nUserId + ( g_nRandomNumber ) );
+                set_task( get_pcvar_float( g_nRespawnDelay ), "T_OnceRespawned", nUserId + ( g_nRandomNumber ) );
             }
 
             return PLUGIN_CONTINUE;
@@ -1027,7 +1544,7 @@ public T_ManageBots( const nTask )
 
                 else
                 {
-                    sendSayText( 0, 35 /** \x03 is blue */, "\x04%s\x03 %s\x01 joined the\x03 Counter-Terrorists", g_szTag, szName );
+                    sendSayText( 0, 35 /* \x03 is blue */, "\x04%s\x03 %s\x01 joined the\x03 Counter-Terrorists", g_szTag, szName );
                 }
             }
         }
@@ -1076,7 +1593,7 @@ public T_ManageBots( const nTask )
 
         // Is this specified selected bot a valid one?
         //
-        if( nPlayer == g_nInvalidPlayer )
+        if( nPlayer < 1 || nPlayer > g_nMaximumPlayers )
         {
             return PLUGIN_CONTINUE;
         }
@@ -1120,12 +1637,15 @@ public T_ManageBots( const nTask )
 
                 else if( module_exists( "fakemeta" ) )
                 {
-                    dllfunc( 1 /** DLLFunc_Spawn */, nPlayer );
+                    dllfunc( 1 /* DLLFunc_Spawn */, nPlayer );
                 }
 
                 else if( !is_user_alive( nPlayer ) )
                 {
-                    cs_user_spawn( nPlayer );
+                    if( module_exists( "cstrike" ) )
+                    {
+                        cs_user_spawn( nPlayer );
+                    }
                 }
             }
 
@@ -1136,7 +1656,7 @@ public T_ManageBots( const nTask )
                     remove_task( nUserId + ( g_nRandomNumber ) );
                 }
 
-                set_task( floatmax( get_pcvar_float( g_nRespawnDelay ), 0.0 ), "T_OnceRespawned", nUserId + ( g_nRandomNumber ) );
+                set_task( get_pcvar_float( g_nRespawnDelay ), "T_OnceRespawned", nUserId + ( g_nRandomNumber ) );
             }
 
             return PLUGIN_CONTINUE;
@@ -1155,7 +1675,7 @@ public T_ManageBots( const nTask )
 
                 else
                 {
-                    sendSayText( 0, 34 /** \x03 is red */, "\x04%s\x03 %s\x01 joined the\x03 Terrorists", g_szTag, szName );
+                    sendSayText( 0, 34 /* \x03 is red */, "\x04%s\x03 %s\x01 joined the\x03 Terrorists", g_szTag, szName );
                 }
             }
         }
@@ -1181,7 +1701,7 @@ public T_ManageBots( const nTask )
 //
 public T_OnceRespawned( const nTask )
 {
-    static nPlayer, szName[ 32 ], CsTeams: nTeam;
+    static nPlayer, szName[ 32 ], CsTeams: eTeam;
     {
         // Find the player by their user index
         //
@@ -1189,7 +1709,7 @@ public T_OnceRespawned( const nTask )
         {
             if( is_user_bot( nPlayer ) )
             {
-                if( ( nTeam = cs_get_user_team( nPlayer ) ) == CS_TEAM_T )
+                if( ( eTeam = cs_get_user_team( nPlayer ) ) == CS_TEAM_T )
                 {
                     // Announce all
                     //
@@ -1204,7 +1724,7 @@ public T_OnceRespawned( const nTask )
 
                             else
                             {
-                                sendSayText( 0, 34 /** \x03 is red */, "\x04%s\x03 %s\x01 joined the\x03 Terrorists", g_szTag, szName );
+                                sendSayText( 0, 34 /* \x03 is red */, "\x04%s\x03 %s\x01 joined the\x03 Terrorists", g_szTag, szName );
                             }
                         }
                     }
@@ -1223,7 +1743,7 @@ public T_OnceRespawned( const nTask )
                     }
                 }
 
-                else if( nTeam == CS_TEAM_CT )
+                else if( eTeam == CS_TEAM_CT )
                 {
                     // Announce all
                     //
@@ -1238,7 +1758,7 @@ public T_OnceRespawned( const nTask )
 
                             else
                             {
-                                sendSayText( 0, 35 /** \x03 is blue */, "\x04%s\x03 %s\x01 joined the\x03 Counter-Terrorists", g_szTag, szName );
+                                sendSayText( 0, 35 /* \x03 is blue */, "\x04%s\x03 %s\x01 joined the\x03 Counter-Terrorists", g_szTag, szName );
                             }
                         }
                     }
@@ -1260,7 +1780,7 @@ public T_OnceRespawned( const nTask )
 
             else
             {
-                if( ( nTeam = cs_get_user_team( nPlayer ) ) == CS_TEAM_T )
+                if( ( eTeam = cs_get_user_team( nPlayer ) ) == CS_TEAM_T )
                 {
                     // Announce them
                     //
@@ -1278,7 +1798,7 @@ public T_OnceRespawned( const nTask )
 
                         else
                         {
-                            sendSayText( nPlayer, 34 /** \x03 is red */, "\x04%s\x01 You've joined the\x03 Terrorists", g_szTag );
+                            sendSayText( nPlayer, 34 /* \x03 is red */, "\x04%s\x01 You've joined the\x03 Terrorists", g_szTag );
                         }
                     }
 
@@ -1295,7 +1815,7 @@ public T_OnceRespawned( const nTask )
 
                             else
                             {
-                                sendSayText( 0, 34 /** \x03 is red */, "\x04%s\x03 %s\x01 joined the\x03 Terrorists", g_szTag, szName );
+                                sendSayText( 0, 34 /* \x03 is red */, "\x04%s\x03 %s\x01 joined the\x03 Terrorists", g_szTag, szName );
                             }
                         }
                     }
@@ -1339,7 +1859,7 @@ public T_OnceRespawned( const nTask )
                     }
                 }
 
-                else if( nTeam == CS_TEAM_CT )
+                else if( eTeam == CS_TEAM_CT )
                 {
                     // Announce them
                     //
@@ -1357,7 +1877,7 @@ public T_OnceRespawned( const nTask )
 
                         else
                         {
-                            sendSayText( nPlayer, 35 /** \x03 is blue */, "\x04%s\x01 You've joined the\x03 Counter-Terrorists", g_szTag );
+                            sendSayText( nPlayer, 35 /* \x03 is blue */, "\x04%s\x01 You've joined the\x03 Counter-Terrorists", g_szTag );
                         }
                     }
 
@@ -1374,7 +1894,7 @@ public T_OnceRespawned( const nTask )
 
                             else
                             {
-                                sendSayText( 0, 35 /** \x03 is blue */, "\x04%s\x03 %s\x01 joined the\x03 Counter-Terrorists", g_szTag, szName );
+                                sendSayText( 0, 35 /* \x03 is blue */, "\x04%s\x03 %s\x01 joined the\x03 Counter-Terrorists", g_szTag, szName );
                             }
                         }
                     }
@@ -1426,42 +1946,42 @@ public T_OnceRespawned( const nTask )
 
 // Read bots count in a team
 //
-static BotsNum( const CsTeams: nTeam )
+static BotsNum( const CsTeams: eTeam )
 {
-    static nPlayers[ 32 ], nNum;
+    static pnPlayers[ 32 ], nNum;
     {
-        get_players( nPlayers, nNum, "deh", nTeam == CS_TEAM_T ? "TERRORIST" : "CT" );
+        get_players_custom( pnPlayers, nNum, "deh", eTeam ); // Exclude hltv proxies
     }
 
     return nNum;
 }
 
-// This function will return the player with the lowest/ highest frags from one team or `g_nInvalidPlayer`
+// This function will return the player with the lowest/ highest frags from one team
 //
-static FindPlayerByFrags( const bool: bByLowFrags, const CsTeams: nTeam )
+static FindPlayerByFrags( const bool: bByLowFrags, const CsTeams: eTeam )
 {
-    static nWho, nPlayers[ 32 ], nNum, nPlayer, nIter, nMinMaxFrags, nFrags;
+    static nWho, pnPlayers[ 32 ], nNum, nPlayer, nIter, nMinMaxFrags, nFrags;
 
     if( g_bBotsAreLikeHumans )
     {
-        get_players( nPlayers, nNum, g_bCsdmActive ? "eh" : "beh", nTeam == CS_TEAM_T ? "TERRORIST" : "CT" ); // Filter out hltv proxies
+        get_players_custom( pnPlayers, nNum, ( g_bCsdmActive || get_pcvar_num( g_nAlsoTransferAlive ) ) ? "eh" : "beh", eTeam ); // Filter out hltv proxies
     }
 
     else
     {
-        get_players( nPlayers, nNum, g_bCsdmActive ? "ceh" : "bceh", nTeam == CS_TEAM_T ? "TERRORIST" : "CT" ); // Filter out bots & hltv proxies
+        get_players_custom( pnPlayers, nNum, ( g_bCsdmActive || get_pcvar_num( g_nAlsoTransferAlive ) ) ? "ceh" : "bceh", eTeam ); // Filter out bots & hltv proxies
     }
 
     // The lowest/ highest number
     //
     nMinMaxFrags = bByLowFrags ? ( ( 2000000000 ) /* Highest */ ) : ( ( -2000000000 ) /* Lowest */ );
 
-    for( nIter = 0, nWho = g_nInvalidPlayer; nIter < nNum; nIter++ )
+    for( nIter = 0, nWho = 0; nIter < nNum; nIter++ )
     {
-        nPlayer = nPlayers[ nIter ];
+        nPlayer = pnPlayers[ nIter ];
 
         if( g_nFlagNum > 0 )
-        { /// Special access
+        { // Special access
             if( get_user_flags( nPlayer ) & g_nFlagNum )
             {
                 continue;
@@ -1496,26 +2016,26 @@ static FindPlayerByFrags( const bool: bByLowFrags, const CsTeams: nTeam )
     return nWho;
 }
 
-// This function will return the bot with the lowest/ highest frags from one team or `g_nInvalidPlayer`
+// This function will return the bot with the lowest/ highest frags from one team
 //
-static FindBotByFrags( const bool: bByLowFrags, const CsTeams: nTeam )
+static FindBotByFrags( const bool: bByLowFrags, const CsTeams: eTeam )
 {
-    static nWho, nPlayers[ 32 ], nNum, nPlayer, nIter, nMinMaxFrags, nFrags;
+    static nWho, pnPlayers[ 32 ], nNum, nPlayer, nIter, nMinMaxFrags, nFrags;
 
     // Exclude human players & hltv proxies
     //
-    get_players( nPlayers, nNum, g_bCsdmActive ? "deh" : "bdeh", nTeam == CS_TEAM_T ? "TERRORIST" : "CT" );
+    get_players_custom( pnPlayers, nNum, ( g_bCsdmActive || get_pcvar_num( g_nAlsoTransferAlive ) ) ? "deh" : "bdeh", eTeam );
 
     // The lowest/ highest number
     //
     nMinMaxFrags = bByLowFrags ? ( ( 2000000000 ) /* Highest */ ) : ( ( -2000000000 ) /* Lowest */ );
 
-    for( nIter = 0, nWho = g_nInvalidPlayer; nIter < nNum; nIter++ )
+    for( nIter = 0, nWho = 0; nIter < nNum; nIter++ )
     {
-        nPlayer = nPlayers[ nIter ];
+        nPlayer = pnPlayers[ nIter ];
 
         if( g_nFlagNum > 0 )
-        { /// Special access
+        { // Special access
             if( get_user_flags( nPlayer ) & g_nFlagNum )
             {
                 continue;
@@ -1550,28 +2070,28 @@ static FindBotByFrags( const bool: bByLowFrags, const CsTeams: nTeam )
     return nWho;
 }
 
-// This function will return the player with the most appropiate frags for transfer from one team or `g_nInvalidPlayer`
+// This function will return the player with the most appropiate frags for transfer from one team
 //
-static FindSortedPlayer( const CsTeams: nTeam )
+static FindSortedPlayer( const CsTeams: eTeam )
 {
-    static nPlayers[ 32 ], nNum, nPlayer, nWho, nFrags, nIter, nData[ 32 ][ 2 /** [ 0 ] = player index & [ 1 ] = extra */ ], nEntries, nTopDifference;
+    static pnPlayers[ 32 ], nNum, nPlayer, nWho, nFrags, nIter, ppnData[ 32 ][ 2 /* [ 0 ] = player index & [ 1 ] = extra */ ], nEntries, nTopDifference;
 
     if( g_bBotsAreLikeHumans )
     {
-        get_players( nPlayers, nNum, g_bCsdmActive ? "eh" : "beh", nTeam == CS_TEAM_T ? "TERRORIST" : "CT" ); // Filter out hltv proxies
+        get_players_custom( pnPlayers, nNum, ( g_bCsdmActive || get_pcvar_num( g_nAlsoTransferAlive ) ) ? "eh" : "beh", eTeam ); // Filter out hltv proxies
     }
 
     else
     {
-        get_players( nPlayers, nNum, g_bCsdmActive ? "ceh" : "bceh", nTeam == CS_TEAM_T ? "TERRORIST" : "CT" ); // Filter out bots & hltv proxies
+        get_players_custom( pnPlayers, nNum, ( g_bCsdmActive || get_pcvar_num( g_nAlsoTransferAlive ) ) ? "ceh" : "bceh", eTeam ); // Filter out bots & hltv proxies
     }
 
-    for( nIter = 0, nEntries = 0, nWho = g_nInvalidPlayer; nIter < nNum; nIter++ )
+    for( nIter = 0, nEntries = 0, nWho = 0; nIter < nNum; nIter++ )
     {
-        nPlayer = nPlayers[ nIter ];
+        nPlayer = pnPlayers[ nIter ];
 
         if( g_nFlagNum > 0 )
-        { /// Special access
+        { // Special access
             if( get_user_flags( nPlayer ) & g_nFlagNum )
             {
                 continue;
@@ -1580,9 +2100,9 @@ static FindSortedPlayer( const CsTeams: nTeam )
 
         nFrags = get_user_frags( nPlayer );
         {
-            nData[ nEntries ][ 0 ] = nPlayer;
+            ppnData[ nEntries ][ 0 ] = nPlayer;
             {
-                nData[ nEntries ][ 1 ] = ( ( nTeam == CS_TEAM_T ) ? ( abs( ( g_nScoring_TE - nFrags ) - ( g_nScoring_CT + nFrags ) ) ) : ( abs( ( g_nScoring_CT - nFrags ) - ( g_nScoring_TE + nFrags ) ) ) );
+                ppnData[ nEntries ][ 1 ] = ( ( eTeam == CS_TEAM_T ) ? ( abs( ( g_nScoring_TE - nFrags ) - ( g_nScoring_CT + nFrags ) ) ) : ( abs( ( g_nScoring_CT - nFrags ) - ( g_nScoring_TE + nFrags ) ) ) );
             }
         }
 
@@ -1591,13 +2111,13 @@ static FindSortedPlayer( const CsTeams: nTeam )
 
     if( nEntries > 0 )
     {
-        for( nIter = 0, nTopDifference = 2000000000 /** A huge number */; nIter < nEntries; nIter++ )
+        for( nIter = 0, nTopDifference = 2000000000 /* A huge number */; nIter < nEntries; nIter++ )
         {
-            if( nData[ nIter ][ 1 ] < nTopDifference )
+            if( ppnData[ nIter ][ 1 ] < nTopDifference )
             {
-                nWho = nData[ nIter ][ 0 ];
+                nWho = ppnData[ nIter ][ 0 ];
                 {
-                    nTopDifference = nData[ nIter ][ 1 ];
+                    nTopDifference = ppnData[ nIter ][ 1 ];
                 }
             }
         }
@@ -1606,22 +2126,22 @@ static FindSortedPlayer( const CsTeams: nTeam )
     return nWho;
 }
 
-// This function will return the bot with the most appropiate frags for transfer from one team or `g_nInvalidPlayer`
+// This function will return the bot with the most appropiate frags for transfer from one team
 //
-static FindSortedBot( const CsTeams: nTeam )
+static FindSortedBot( const CsTeams: eTeam )
 {
-    static nPlayers[ 32 ], nNum, nPlayer, nWho, nFrags, nIter, nData[ 32 ][ 2 /** [ 0 ] = player index & [ 1 ] = extra */ ], nEntries, nTopDifference;
+    static pnPlayers[ 32 ], nNum, nPlayer, nWho, nFrags, nIter, ppnData[ 32 ][ 2 /* [ 0 ] = player index & [ 1 ] = extra */ ], nEntries, nTopDifference;
 
     // Exclude human players & hltv proxies
     //
-    get_players( nPlayers, nNum, g_bCsdmActive ? "deh" : "bdeh", nTeam == CS_TEAM_T ? "TERRORIST" : "CT" );
+    get_players_custom( pnPlayers, nNum, ( g_bCsdmActive || get_pcvar_num( g_nAlsoTransferAlive ) ) ? "deh" : "bdeh", eTeam );
 
-    for( nIter = 0, nEntries = 0, nWho = g_nInvalidPlayer; nIter < nNum; nIter++ )
+    for( nIter = 0, nEntries = 0, nWho = 0; nIter < nNum; nIter++ )
     {
-        nPlayer = nPlayers[ nIter ];
+        nPlayer = pnPlayers[ nIter ];
 
         if( g_nFlagNum > 0 )
-        { /// Special access
+        { // Special access
             if( get_user_flags( nPlayer ) & g_nFlagNum )
             {
                 continue;
@@ -1630,9 +2150,9 @@ static FindSortedBot( const CsTeams: nTeam )
 
         nFrags = get_user_frags( nPlayer );
         {
-            nData[ nEntries ][ 0 ] = nPlayer;
+            ppnData[ nEntries ][ 0 ] = nPlayer;
             {
-                nData[ nEntries ][ 1 ] = ( ( nTeam == CS_TEAM_T ) ? ( abs( ( g_nScoring_TE - nFrags ) - ( g_nScoring_CT + nFrags ) ) ) : ( abs( ( g_nScoring_CT - nFrags ) - ( g_nScoring_TE + nFrags ) ) ) );
+                ppnData[ nEntries ][ 1 ] = ( ( eTeam == CS_TEAM_T ) ? ( abs( ( g_nScoring_TE - nFrags ) - ( g_nScoring_CT + nFrags ) ) ) : ( abs( ( g_nScoring_CT - nFrags ) - ( g_nScoring_TE + nFrags ) ) ) );
             }
         }
 
@@ -1641,13 +2161,13 @@ static FindSortedBot( const CsTeams: nTeam )
 
     if( nEntries > 0 )
     {
-        for( nIter = 0, nTopDifference = 2000000000 /** A huge number */; nIter < nEntries; nIter++ )
+        for( nIter = 0, nTopDifference = 2000000000 /* A huge number */; nIter < nEntries; nIter++ )
         {
-            if( nData[ nIter ][ 1 ] < nTopDifference )
+            if( ppnData[ nIter ][ 1 ] < nTopDifference )
             {
-                nWho = nData[ nIter ][ 0 ];
+                nWho = ppnData[ nIter ][ 0 ];
                 {
-                    nTopDifference = nData[ nIter ][ 1 ];
+                    nTopDifference = ppnData[ nIter ][ 1 ];
                 }
             }
         }
@@ -1658,11 +2178,11 @@ static FindSortedBot( const CsTeams: nTeam )
 
 // The total frags of a team
 //
-static CheckTeamScoring( const CsTeams: nTeam )
+static CheckTeamScoring( const CsTeams: eTeam )
 {
-    static nPlayers[ 32 ], nNum, nPlayer, nIter, nFrags;
+    static pnPlayers[ 32 ], nNum, nPlayer, nIter, nFrags;
 
-    get_players( nPlayers, nNum, "eh", nTeam == CS_TEAM_T ? "TERRORIST" : "CT" ); // Exclude hltv proxies
+    get_players_custom( pnPlayers, nNum, "eh", eTeam ); // Exclude hltv proxies & match with team
 
     if( nNum < 1 )
     {
@@ -1671,7 +2191,7 @@ static CheckTeamScoring( const CsTeams: nTeam )
 
     for( nIter = 0, nFrags = 0; nIter < nNum; nIter++ )
     {
-        nPlayer = nPlayers[ nIter ];
+        nPlayer = pnPlayers[ nIter ];
         {
             nFrags += get_user_frags( nPlayer );
         }
@@ -1682,36 +2202,36 @@ static CheckTeamScoring( const CsTeams: nTeam )
 
 // Send screen fade
 //
-static PerformPlayerScreenFade( const &nPlayer, const CsTeams: nTeam )
+static PerformPlayerScreenFade( const &nPlayer, const CsTeams: eTeam )
 {
     if( nPlayer > 0 )
     {
         if( g_nScreenFadeMsg > 0 )
         {
-            message_begin( MSG_ONE_UNRELIABLE, g_nScreenFadeMsg, { 0, 0, 0 } /** Message origin */, nPlayer );
+            message_begin( MSG_ONE_UNRELIABLE, g_nScreenFadeMsg, { 0, 0, 0 } /* Message origin */, nPlayer );
             {
-                write_short( floatround( 4096.0 /** UNIT_SECOND = ( 1 << 12 ) */ * floatabs( get_pcvar_float( g_nScreenFadeDuration ) ), floatround_round ) ); /// Duration
-                write_short( floatround( 4096.0 /** UNIT_SECOND = ( 1 << 12 ) */ * floatabs( get_pcvar_float( g_nScreenFadeHoldTime ) ), floatround_round ) ); /// Hold time
+                write_short( floatround( 4096.0 /* UNIT_SECOND = ( 1 << 12 ) */ * floatabs( get_pcvar_float( g_nScreenFadeDuration ) ), floatround_round ) ); // Duration
+                write_short( floatround( 4096.0 /* UNIT_SECOND = ( 1 << 12 ) */ * floatabs( get_pcvar_float( g_nScreenFadeHoldTime ) ), floatround_round ) ); // Hold time
                 {
-                    write_short( 0 /** FFADE_IN = 0x0000 */ ); /// Fade type
+                    write_short( 0 /* FFADE_IN = 0x0000 */ ); // Fade type
                     {
-                        if( nTeam == CS_TEAM_T )
-                        { /// Red
-                            write_byte( clamp( get_pcvar_num( g_nScreenFadeRGBA_TE[ 0 ] ), 0, 255 ) ); /// Red
-                            write_byte( clamp( get_pcvar_num( g_nScreenFadeRGBA_TE[ 1 ] ), 0, 255 ) ); /// Green
-                            write_byte( clamp( get_pcvar_num( g_nScreenFadeRGBA_TE[ 2 ] ), 0, 255 ) ); /// Blue
+                        if( eTeam == CS_TEAM_T )
+                        { // Red
+                            write_byte( clamp( get_pcvar_num( g_nScreenFadeRGBA_TE[ 0 ] ), 0, 255 ) ); // Red
+                            write_byte( clamp( get_pcvar_num( g_nScreenFadeRGBA_TE[ 1 ] ), 0, 255 ) ); // Green
+                            write_byte( clamp( get_pcvar_num( g_nScreenFadeRGBA_TE[ 2 ] ), 0, 255 ) ); // Blue
                             {
-                                write_byte( clamp( get_pcvar_num( g_nScreenFadeRGBA_TE[ 3 ] ), 0, 255 ) ); /// Alpha
+                                write_byte( clamp( get_pcvar_num( g_nScreenFadeRGBA_TE[ 3 ] ), 0, 255 ) ); // Alpha
                             }
                         }
 
                         else
-                        { /// Blue
-                            write_byte( clamp( get_pcvar_num( g_nScreenFadeRGBA_CT[ 0 ] ), 0, 255 ) ); /// Red
-                            write_byte( clamp( get_pcvar_num( g_nScreenFadeRGBA_CT[ 1 ] ), 0, 255 ) ); /// Green
-                            write_byte( clamp( get_pcvar_num( g_nScreenFadeRGBA_CT[ 2 ] ), 0, 255 ) ); /// Blue
+                        { // Blue
+                            write_byte( clamp( get_pcvar_num( g_nScreenFadeRGBA_CT[ 0 ] ), 0, 255 ) ); // Red
+                            write_byte( clamp( get_pcvar_num( g_nScreenFadeRGBA_CT[ 1 ] ), 0, 255 ) ); // Green
+                            write_byte( clamp( get_pcvar_num( g_nScreenFadeRGBA_CT[ 2 ] ), 0, 255 ) ); // Blue
                             {
-                                write_byte( clamp( get_pcvar_num( g_nScreenFadeRGBA_CT[ 3 ] ), 0, 255 ) ); /// Alpha
+                                write_byte( clamp( get_pcvar_num( g_nScreenFadeRGBA_CT[ 3 ] ), 0, 255 ) ); // Alpha
                             }
                         }
                     }
@@ -1724,7 +2244,7 @@ static PerformPlayerScreenFade( const &nPlayer, const CsTeams: nTeam )
     return PLUGIN_CONTINUE;
 }
 
-// Colored print_chat (print_talk) message in CS & CZ
+// Colored print_chat (`print_talk`) message in CS & CZ
 //
 // ------
 // nIndex
@@ -1738,7 +2258,7 @@ static PerformPlayerScreenFade( const &nPlayer, const CsTeams: nTeam )
 //
 static sendSayText( const nPlayer, const nIndex, const szIn[ ], const any: ... )
 {
-    static szMsg[ 256 ], nPlayers[ 32 ], nNum, nIter, nTo;
+    static szMsg[ 256 ], pnPlayers[ 32 ], nNum, nIter, nTo;
     {
         if( g_nSayTextMsg > 0 )
         {
@@ -1746,7 +2266,7 @@ static sendSayText( const nPlayer, const nIndex, const szIn[ ], const any: ... )
             {
                 if( nPlayer > 0 )
                 {
-                    message_begin( MSG_ONE_UNRELIABLE, g_nSayTextMsg, { 0, 0, 0 } /** Message origin */, nPlayer );
+                    message_begin( MSG_ONE_UNRELIABLE, g_nSayTextMsg, { 0, 0, 0 } /* Message origin */, nPlayer );
                     {
                         write_byte( ( ( ( nIndex > 32 ) && ( nIndex < 36 ) ) ? ( nIndex ) : ( nPlayer ) ) );
                         {
@@ -1758,15 +2278,15 @@ static sendSayText( const nPlayer, const nIndex, const szIn[ ], const any: ... )
 
                 else
                 {
-                    get_players( nPlayers, nNum, "ch", "" ); // No bots & hltv proxies
+                    get_players_custom( pnPlayers, nNum, "ch", CS_TEAM_UNASSIGNED ); // No bots & hltv proxies
                     {
                         if( nNum > 0 )
                         {
                             for( nIter = 0; nIter < nNum; nIter++ )
                             {
-                                nTo = nPlayers[ nIter ];
+                                nTo = pnPlayers[ nIter ];
                                 {
-                                    message_begin( MSG_ONE_UNRELIABLE, g_nSayTextMsg, { 0, 0, 0 } /** Message origin */, nTo );
+                                    message_begin( MSG_ONE_UNRELIABLE, g_nSayTextMsg, { 0, 0, 0 } /* Message origin */, nTo );
                                     {
                                         write_byte( ( ( ( nIndex > 32 ) && ( nIndex < 36 ) ) ? ( nIndex ) : ( nTo ) ) );
                                         {
@@ -1784,4 +2304,103 @@ static sendSayText( const nPlayer, const nIndex, const szIn[ ], const any: ... )
     }
 
     return PLUGIN_CONTINUE;
+}
+
+// Build a custom array of players
+//
+// -------
+// szFlags
+// -------
+//
+// "a" Skip dead players ( OR )
+// "b" Skip alive players
+//
+// "c" Skip bot players ( OR )
+// "d" Skip non-bot players
+//
+// "e" Skip players that are not in the specified team ( OR )
+// "y" Skip players that are in the specified team
+//
+// "h" Skip hltv players ( OR )
+// "z" Skip non-hltv players
+//
+static get_players_custom( pnPlayers[ 32 ], &nSize, const szFlags[ ], const CsTeams: eTeam )
+{
+    static nPlayer;
+
+    for( nPlayer = 1, nSize = 0, arrayset( pnPlayers, 0, sizeof( pnPlayers ) ); nPlayer <= g_nMaximumPlayers; nPlayer++ )
+    {
+        if( !is_user_connected( nPlayer ) )
+        {
+            continue;
+        }
+
+        if( containi( szFlags, "a" ) > -1 )
+        {
+            if( !is_user_alive( nPlayer ) )
+            {
+                continue;
+            }
+        }
+
+        else if( containi( szFlags, "b" ) > -1 )
+        {
+            if( is_user_alive( nPlayer ) )
+            {
+                continue;
+            }
+        }
+
+        if( containi( szFlags, "c" ) > -1 )
+        {
+            if( is_user_bot( nPlayer ) )
+            {
+                continue;
+            }
+        }
+
+        else if( containi( szFlags, "d" ) > -1 )
+        {
+            if( !is_user_bot( nPlayer ) )
+            {
+                continue;
+            }
+        }
+
+        if( containi( szFlags, "e" ) > -1 )
+        {
+            if( eTeam != cs_get_user_team( nPlayer ) )
+            {
+                continue;
+            }
+        }
+
+        else if( containi( szFlags, "y" ) > -1 )
+        {
+            if( eTeam == cs_get_user_team( nPlayer ) )
+            {
+                continue;
+            }
+        }
+
+        if( containi( szFlags, "h" ) > -1 )
+        {
+            if( is_user_hltv( nPlayer ) )
+            {
+                continue;
+            }
+        }
+
+        else if( containi( szFlags, "z" ) > -1 )
+        {
+            if( !is_user_hltv( nPlayer ) )
+            {
+                continue;
+            }
+        }
+
+        pnPlayers[ nSize++ ] = nPlayer;
+    }
+
+    return nSize;
 }

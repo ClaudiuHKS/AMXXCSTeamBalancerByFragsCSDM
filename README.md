@@ -67,3 +67,5 @@ https://forums.alliedmods.net/showthread.php?t=161175
 `team_balancer_round_end_quick 1` // If `1`, when balancing the teams only during **round end** while the '**CS:DM**' extension is **disabled** or **missing**, ignore the '`team_balancer_frequency`' and '`team_balancer_bots_delay`' console variables and perform everything **very quick**
 
 `team_balancer_no_respawn 1` // Do **not** respawn if the '**CS:DM**' extension is **missing** or **disabled**. This setting has **no effect** if '**CS:DM**' exists and running
+
+`team_balancer_transfer_alive 1` // Also **allow** the transfer of **alive** players in game servers which are not '**CS:DM**' or are '**CS:DM**' but '`csdm_active`' disabled

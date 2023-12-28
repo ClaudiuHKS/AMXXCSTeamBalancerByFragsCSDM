@@ -1,7 +1,11 @@
 
 /*** ----------------------------------------------------------------------------------------------------------------------- ***/
 
-// Use "\"some quoted string inside a string\"" instead of "^"some quoted string inside a string^""
+#pragma tabsize 0
+#pragma semicolon 0
+#pragma dynamic 4194304
+
+// Use "\"some quoted string inside a string\"" instead of the default "^"some quoted string inside a string^""
 //
 #pragma ctrlchar '\'
 
@@ -9,6 +13,8 @@
 
 #include < amxmodx > // register_cvar, ...
 #include < cstrike > // cs_set_user_team, ...
+
+/*** ----------------------------------------------------------------------------------------------------------------------- ***/
 
 native dllfunc( const nType, const any: ... ); /** Optional */ /// The game server does not need to have this function [ FAKEMETA MODULE ]
 
@@ -259,11 +265,7 @@ public plugin_init( )
 {
     register_plugin( "Team Balancer by Frags", g_szPluginVersion, "Hattrick (claudiuhks)" );
     {
-        /// FCVAR_SERVER | FCVAR_SPONLY
-        //
-        /// https://github.com/alliedmodders/amxmodx/blob/master/amxmodx/meta_api.cpp#L132
-        //
-        g_nVersion = register_cvar( "team_balancer_by_frags", g_szPluginVersion, FCVAR_SERVER | FCVAR_SPONLY );
+        g_nVersion = register_cvar( "team_balancer_by_frags", g_szPluginVersion, FCVAR_SERVER | FCVAR_UNLOGGED | FCVAR_EXTDLL );
     }
 
     g_nFrequency = register_cvar( "team_balancer_frequency", "5.0" );
@@ -301,32 +303,37 @@ public plugin_init( )
     g_nScreenFadeRGBA_CT[ 2 ] = register_cvar( "team_balancer_sf_ct_b", "200" ); /// Blue
     g_nScreenFadeRGBA_CT[ 3 ] = register_cvar( "team_balancer_sf_ct_a", "240" ); /// Alpha
 
-    set_task( 0.25, "T_Install", get_systime( 0 ), "", 0, "", 0 );
+    set_task( 0.25, "T_Install", get_systime( 0 ) );
 
     g_nCsdmActive = get_cvar_pointer( "csdm_active" );
 
     register_event( "HLTV", "E_OnRoundLaunch", "a", "1=0", "2=0" );
     {
-        register_logevent( "LE_OnRoundBegin", 2, "1=Round_Start" );
         register_logevent( "LE_OnRoundEnd", 2, "1=Round_End" );
     }
 
     return PLUGIN_CONTINUE;
 }
 
-public E_OnRoundLaunch( )
+// Executes when a new round begins
+//
+public E_OnRoundLaunch( const nValue )
 {
     g_bCanBalance = false;
+
+    return PLUGIN_CONTINUE;
 }
 
-public LE_OnRoundBegin( )
-{
-    g_bCanBalance = false;
-}
-
+// Executes when a round ends
+//
 public LE_OnRoundEnd( )
 {
     g_bCanBalance = true;
+    {
+        set_task( 3.9, "T_StopBalancing", get_systime( 0 ) );
+    }
+
+    return PLUGIN_CONTINUE;
 }
 
 // Executes before `plugin_init`
@@ -337,8 +344,12 @@ public plugin_precache( )
     {
         formatex( szBuffer, charsmax( szBuffer ), "%s/%s", g_szSoundDirectoryName, g_szWaveAudioFilePath );
         {
+            // If the file exists
+            //
             if( file_exists( szBuffer ) )
             {
+                // The players will then download it
+                //
                 precache_sound( g_szWaveAudioFilePath );
             }
         }
@@ -364,8 +375,10 @@ public plugin_cfg( )
 
 // When a native is being computed
 //
-public Filter_Natives( const szNative[ ], const nNative, const bool: bFound )
+public F_Natives( const szNative[ ], const nNative, const bool: bFound )
 {
+    // Not found on the game server
+    //
     if( !bFound )
     {
         if( strcmp( szNative, "dllfunc", true ) == 0 || /** FAKEMETA */
@@ -373,7 +386,7 @@ public Filter_Natives( const szNative[ ], const nNative, const bool: bFound )
             strcmp( szNative, "csdm_respawn", true ) == 0 || /** CSDM */
             strcmp( szNative, "csdm_active", true ) == 0 || /** CSDM */
             strcmp( szNative, "csdm_get_spawnwait", true ) == 0 || /** CSDM */
-            strcmp( szNative, "csdm_set_spawnwait", true ) == 0) /** CSDM */
+            strcmp( szNative, "csdm_set_spawnwait", true ) == 0 ) /** CSDM */
         {
             return PLUGIN_HANDLED; /** I understand that for some reason this native does not exist on the game server so don't throw any error to the logging system */
         }
@@ -386,7 +399,16 @@ public Filter_Natives( const szNative[ ], const nNative, const bool: bFound )
 //
 public plugin_natives( )
 {
-    set_native_filter( "Filter_Natives" );
+    set_native_filter( "F_Natives" );
+
+    return PLUGIN_CONTINUE;
+}
+
+// A task to stop the team balancing when needed
+//
+public T_StopBalancing( const nTask )
+{
+    g_bCanBalance = false;
 
     return PLUGIN_CONTINUE;
 }
@@ -397,8 +419,10 @@ public T_Install( const nTask )
 {
     g_fFrequency = floatmax( get_pcvar_float( g_nFrequency ), 0.2 );
     {
-        set_task( g_fFrequency, "T_CheckTeams", get_systime( 0 ), "", 0, "b", 0 ); // Repeat indefinitely
+        set_task( g_fFrequency, "T_CheckTeams", get_systime( 0 ), "", 0, "b" ); // Repeat indefinitely
     }
+
+    return PLUGIN_CONTINUE;
 }
 
 // Check the teams
@@ -468,18 +492,20 @@ public T_CheckTeams( const nTask )
         {
             if( g_bRoundEndOnly )
             {
-                change_task( nTask, 0.2, 0 );
+                // Perform the transfers very quick
+                //
+                change_task( nTask, 0.2 );
             }
 
             else
             {
-                change_task( nTask, g_fFrequency, 0 );
+                change_task( nTask, g_fFrequency );
             }
         }
 
         else
         {
-            change_task( nTask, g_fFrequency, 0 );
+            change_task( nTask, g_fFrequency );
         }
 
         if( !g_bCanBalance )
@@ -493,7 +519,7 @@ public T_CheckTeams( const nTask )
 
     else
     {
-        change_task( nTask, g_fFrequency, 0 );
+        change_task( nTask, g_fFrequency );
     }
 
     // Read terrorist team size in players count excluding hltv proxies
@@ -604,12 +630,12 @@ public T_CheckTeams( const nTask )
 
             nUserId = get_user_userid( nPlayer );
             {
-                if( task_exists( nUserId + ( g_nRandomNumber ), 0 ) )
+                if( task_exists( nUserId + ( g_nRandomNumber ) ) )
                 {
-                    remove_task( nUserId + ( g_nRandomNumber ), 0 );
+                    remove_task( nUserId + ( g_nRandomNumber ) );
                 }
 
-                set_task( floatmax( get_pcvar_float( g_nRespawnDelay ), 0.0 ), "T_OnceRespawned", nUserId + ( g_nRandomNumber ), "", 0, "", 0 );
+                set_task( floatmax( get_pcvar_float( g_nRespawnDelay ), 0.0 ), "T_OnceRespawned", nUserId + ( g_nRandomNumber ) );
             }
 
             goto BotsComputation;
@@ -785,12 +811,12 @@ public T_CheckTeams( const nTask )
 
             nUserId = get_user_userid( nPlayer );
             {
-                if( task_exists( nUserId + ( g_nRandomNumber ), 0 ) )
+                if( task_exists( nUserId + ( g_nRandomNumber ) ) )
                 {
-                    remove_task( nUserId + ( g_nRandomNumber ), 0 );
+                    remove_task( nUserId + ( g_nRandomNumber ) );
                 }
 
-                set_task( floatmax( get_pcvar_float( g_nRespawnDelay ), 0.0 ), "T_OnceRespawned", nUserId + ( g_nRandomNumber ), "", 0, "", 0 );
+                set_task( floatmax( get_pcvar_float( g_nRespawnDelay ), 0.0 ), "T_OnceRespawned", nUserId + ( g_nRandomNumber ) );
             }
 
             goto BotsComputation;
@@ -881,7 +907,7 @@ BotsComputation:
     {
         fBotsDelay = floatclamp( get_pcvar_float( g_nBotsDelay ), 0.1, g_fFrequency / 2.0 );
         {
-            set_task( ( ( g_bRoundEndQuick && g_bRoundEndOnly && !g_bCsdmActive && g_bCanBalance ) ? ( 0.1 ) : ( fBotsDelay ) ), "T_ManageBots", get_systime( 0 ), "", 0, "", 0 );
+            set_task( ( ( g_bRoundEndQuick && g_bRoundEndOnly && !g_bCsdmActive && g_bCanBalance ) ? ( 0.1 ) : ( fBotsDelay ) ), "T_ManageBots", get_systime( 0 ) );
         }
     }
 
@@ -977,12 +1003,12 @@ public T_ManageBots( const nTask )
 
             nUserId = get_user_userid( nPlayer );
             {
-                if( task_exists( nUserId + ( g_nRandomNumber ), 0 ) )
+                if( task_exists( nUserId + ( g_nRandomNumber ) ) )
                 {
-                    remove_task( nUserId + ( g_nRandomNumber ), 0 );
+                    remove_task( nUserId + ( g_nRandomNumber ) );
                 }
 
-                set_task( floatmax( get_pcvar_float( g_nRespawnDelay ), 0.0 ), "T_OnceRespawned", nUserId + ( g_nRandomNumber ), "", 0, "", 0 );
+                set_task( floatmax( get_pcvar_float( g_nRespawnDelay ), 0.0 ), "T_OnceRespawned", nUserId + ( g_nRandomNumber ) );
             }
 
             return PLUGIN_CONTINUE;
@@ -1105,12 +1131,12 @@ public T_ManageBots( const nTask )
 
             nUserId = get_user_userid( nPlayer );
             {
-                if( task_exists( nUserId + ( g_nRandomNumber ), 0 ) )
+                if( task_exists( nUserId + ( g_nRandomNumber ) ) )
                 {
-                    remove_task( nUserId + ( g_nRandomNumber ), 0 );
+                    remove_task( nUserId + ( g_nRandomNumber ) );
                 }
 
-                set_task( floatmax( get_pcvar_float( g_nRespawnDelay ), 0.0 ), "T_OnceRespawned", nUserId + ( g_nRandomNumber ), "", 0, "", 0 );
+                set_task( floatmax( get_pcvar_float( g_nRespawnDelay ), 0.0 ), "T_OnceRespawned", nUserId + ( g_nRandomNumber ) );
             }
 
             return PLUGIN_CONTINUE;
@@ -1157,6 +1183,8 @@ public T_OnceRespawned( const nTask )
 {
     static nPlayer, szName[ 32 ], CsTeams: nTeam;
     {
+        // Find the player by their user index
+        //
         if( ( nPlayer = find_player( "k", nTask - ( g_nRandomNumber ) ) ) > 0 )
         {
             if( is_user_bot( nPlayer ) )
@@ -1392,6 +1420,8 @@ public T_OnceRespawned( const nTask )
             }
         }
     }
+
+    return PLUGIN_CONTINUE;
 }
 
 // Read bots count in a team
@@ -1652,40 +1682,43 @@ static CheckTeamScoring( const CsTeams: nTeam )
 
 // Send screen fade
 //
-static PerformPlayerScreenFade( const nPlayer, const CsTeams: nTeam )
+static PerformPlayerScreenFade( const &nPlayer, const CsTeams: nTeam )
 {
     if( nPlayer > 0 )
     {
-        message_begin( MSG_ONE_UNRELIABLE, g_nScreenFadeMsg, { 0, 0, 0 } /** Message origin */, nPlayer );
+        if( g_nScreenFadeMsg > 0 )
         {
-            write_short( floatround( 4096.0 /** UNIT_SECOND = ( 1 << 12 ) */ * floatabs( get_pcvar_float( g_nScreenFadeDuration ) ), floatround_round ) ); /// Duration
-            write_short( floatround( 4096.0 /** UNIT_SECOND = ( 1 << 12 ) */ * floatabs( get_pcvar_float( g_nScreenFadeHoldTime ) ), floatround_round ) ); /// Hold time
+            message_begin( MSG_ONE_UNRELIABLE, g_nScreenFadeMsg, { 0, 0, 0 } /** Message origin */, nPlayer );
             {
-                write_short( 0 /** FFADE_IN = 0x0000 */ ); /// Fade type
+                write_short( floatround( 4096.0 /** UNIT_SECOND = ( 1 << 12 ) */ * floatabs( get_pcvar_float( g_nScreenFadeDuration ) ), floatround_round ) ); /// Duration
+                write_short( floatround( 4096.0 /** UNIT_SECOND = ( 1 << 12 ) */ * floatabs( get_pcvar_float( g_nScreenFadeHoldTime ) ), floatround_round ) ); /// Hold time
                 {
-                    if( nTeam == CS_TEAM_T )
-                    { /// Red
-                        write_byte( clamp( get_pcvar_num( g_nScreenFadeRGBA_TE[ 0 ] ), 0, 255 ) ); /// Red
-                        write_byte( clamp( get_pcvar_num( g_nScreenFadeRGBA_TE[ 1 ] ), 0, 255 ) ); /// Green
-                        write_byte( clamp( get_pcvar_num( g_nScreenFadeRGBA_TE[ 2 ] ), 0, 255 ) ); /// Blue
-                        {
-                            write_byte( clamp( get_pcvar_num( g_nScreenFadeRGBA_TE[ 3 ] ), 0, 255 ) ); /// Alpha
+                    write_short( 0 /** FFADE_IN = 0x0000 */ ); /// Fade type
+                    {
+                        if( nTeam == CS_TEAM_T )
+                        { /// Red
+                            write_byte( clamp( get_pcvar_num( g_nScreenFadeRGBA_TE[ 0 ] ), 0, 255 ) ); /// Red
+                            write_byte( clamp( get_pcvar_num( g_nScreenFadeRGBA_TE[ 1 ] ), 0, 255 ) ); /// Green
+                            write_byte( clamp( get_pcvar_num( g_nScreenFadeRGBA_TE[ 2 ] ), 0, 255 ) ); /// Blue
+                            {
+                                write_byte( clamp( get_pcvar_num( g_nScreenFadeRGBA_TE[ 3 ] ), 0, 255 ) ); /// Alpha
+                            }
                         }
-                    }
 
-                    else
-                    { /// Blue
-                        write_byte( clamp( get_pcvar_num( g_nScreenFadeRGBA_CT[ 0 ] ), 0, 255 ) ); /// Red
-                        write_byte( clamp( get_pcvar_num( g_nScreenFadeRGBA_CT[ 1 ] ), 0, 255 ) ); /// Green
-                        write_byte( clamp( get_pcvar_num( g_nScreenFadeRGBA_CT[ 2 ] ), 0, 255 ) ); /// Blue
-                        {
-                            write_byte( clamp( get_pcvar_num( g_nScreenFadeRGBA_CT[ 3 ] ), 0, 255 ) ); /// Alpha
+                        else
+                        { /// Blue
+                            write_byte( clamp( get_pcvar_num( g_nScreenFadeRGBA_CT[ 0 ] ), 0, 255 ) ); /// Red
+                            write_byte( clamp( get_pcvar_num( g_nScreenFadeRGBA_CT[ 1 ] ), 0, 255 ) ); /// Green
+                            write_byte( clamp( get_pcvar_num( g_nScreenFadeRGBA_CT[ 2 ] ), 0, 255 ) ); /// Blue
+                            {
+                                write_byte( clamp( get_pcvar_num( g_nScreenFadeRGBA_CT[ 3 ] ), 0, 255 ) ); /// Alpha
+                            }
                         }
                     }
                 }
             }
+            message_end( );
         }
-        message_end( );
     }
 
     return PLUGIN_CONTINUE;
@@ -1701,44 +1734,47 @@ static PerformPlayerScreenFade( const nPlayer, const CsTeams: nTeam )
 // If `nIndex` is 34 => ('\x03' is red)
 // If `nIndex` is 35 => ('\x03' is blue)
 //
-// If `nIndex` is % any other value % => ('\x03' is their team color)
+// If `nIndex` is [ % any other value % ] => ('\x03' is their team color)
 //
 static sendSayText( const nPlayer, const nIndex, const szIn[ ], const any: ... )
 {
     static szMsg[ 256 ], nPlayers[ 32 ], nNum, nIter, nTo;
     {
-        if( vformat( szMsg, charsmax( szMsg ), szIn, 4 ) > 0 )
+        if( g_nSayTextMsg > 0 )
         {
-            if( nPlayer > 0 )
+            if( vformat( szMsg, charsmax( szMsg ), szIn, 4 ) > 0 )
             {
-                message_begin( MSG_ONE_UNRELIABLE, g_nSayTextMsg, { 0, 0, 0 } /** Message origin */, nPlayer );
+                if( nPlayer > 0 )
                 {
-                    write_byte( ( ( ( nIndex > 32 ) && ( nIndex < 36 ) ) ? ( nIndex ) : ( nPlayer ) ) );
+                    message_begin( MSG_ONE_UNRELIABLE, g_nSayTextMsg, { 0, 0, 0 } /** Message origin */, nPlayer );
                     {
-                        write_string( szMsg );
-                    }
-                }
-                message_end( );
-            }
-
-            else
-            {
-                get_players( nPlayers, nNum, "ch", "" ); // No bots & hltv proxies
-                {
-                    if( nNum > 0 )
-                    {
-                        for( nIter = 0; nIter < nNum; nIter++ )
+                        write_byte( ( ( ( nIndex > 32 ) && ( nIndex < 36 ) ) ? ( nIndex ) : ( nPlayer ) ) );
                         {
-                            nTo = nPlayers[ nIter ];
+                            write_string( szMsg );
+                        }
+                    }
+                    message_end( );
+                }
+
+                else
+                {
+                    get_players( nPlayers, nNum, "ch", "" ); // No bots & hltv proxies
+                    {
+                        if( nNum > 0 )
+                        {
+                            for( nIter = 0; nIter < nNum; nIter++ )
                             {
-                                message_begin( MSG_ONE_UNRELIABLE, g_nSayTextMsg, { 0, 0, 0 } /** Message origin */, nTo );
+                                nTo = nPlayers[ nIter ];
                                 {
-                                    write_byte( ( ( ( nIndex > 32 ) && ( nIndex < 36 ) ) ? ( nIndex ) : ( nTo ) ) );
+                                    message_begin( MSG_ONE_UNRELIABLE, g_nSayTextMsg, { 0, 0, 0 } /** Message origin */, nTo );
                                     {
-                                        write_string( szMsg );
+                                        write_byte( ( ( ( nIndex > 32 ) && ( nIndex < 36 ) ) ? ( nIndex ) : ( nTo ) ) );
+                                        {
+                                            write_string( szMsg );
+                                        }
                                     }
+                                    message_end( );
                                 }
-                                message_end( );
                             }
                         }
                     }
